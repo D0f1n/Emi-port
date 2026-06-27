@@ -1,0 +1,48 @@
+plugins {
+	id "architectury-plugin" version "3.5-SNAPSHOT"
+	id "dev.architectury.loom-no-remap" version "1.14-SNAPSHOT" apply false
+}
+
+version = rootProject.mod_version
+group = rootProject.maven_group
+
+subprojects {
+	apply plugin: "java"
+	apply plugin: "dev.architectury.loom-no-remap"
+
+	base.archivesName = rootProject.archives_base_name
+	version = rootProject.mod_version
+	group = rootProject.maven_group
+
+	loom {
+		silentMojangMappingsLicense()
+		noIntermediateMappings()
+	}
+
+	repositories {
+		maven { url "https://maven.fabricmc.net/" }
+		maven { url "https://maven.architectury.dev/" }
+		maven { url "https://maven.neoforged.net/releases/" }
+	}
+
+	dependencies {
+		minecraft "com.mojang:minecraft:${rootProject.minecraft_version}"
+	}
+
+	tasks.withType(JavaCompile).configureEach {
+		options.encoding = "UTF-8"
+		options.release = 25
+	}
+
+	java {
+		withSourcesJar()
+	}
+}
+
+allprojects {
+	apply plugin: "architectury-plugin"
+
+	architectury {
+		compileOnly()
+	}
+}

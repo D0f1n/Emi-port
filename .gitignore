@@ -1,0 +1,38 @@
+# Gradle / build
+.gradle/
+build/
+out/
+classes/
+bin/
+.architectury-transformer/
+
+# Run
+run/
+*.log
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.settings/
+.vscode/
+.classpath
+.project
+
+# OS
+.DS_Store
+
+# Local / secrets
+*.local
+local.properties
+
+# AI assistant artifacts — must never be committed
+CLAUDE.md
+**/CLAUDE.md
+.claude/
+.cursor/
+.cursorrules
+.cursorignore
+.aider*
+.github/copilot-instructions.md

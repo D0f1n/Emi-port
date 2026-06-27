@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "emi",
+  "version": "${version}",
+  "name": "EMI",
+  "description": "A featureful and accessible item and recipe viewer",
+  "authors": [
+    "Emi"
+  ],
+  "contact": {},
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "dev.emi.emi.platform.fabric.EmiMainFabric"
+    ],
+    "client": [
+      "dev.emi.emi.platform.fabric.EmiClientFabric"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.0",
+    "minecraft": "~26.2",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}

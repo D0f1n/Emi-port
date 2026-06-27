@@ -1,0 +1,9 @@
+architectury {
+	common(rootProject.enabled_platforms.split(","))
+}
+
+dependencies {
+	// Minecraft is provided by the root `subprojects` block.
+	// Loader API is compile-only here; concrete loader access lives in the platform modules.
+	compileOnly "net.fabricmc:fabric-loader:${rootProject.fabric_loader_version}"
+}
