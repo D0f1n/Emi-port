@@ -7,6 +7,17 @@ architectury {
 	fabric()
 }
 
+loom {
+	// Merge the common (xplat) source set into this mod so dev runs load xplat classes on the same
+	// classloader as Minecraft (parity with the neoforge module; matches the original EMI/REI setup).
+	mods {
+		main {
+			sourceSet sourceSets.main
+			sourceSet project(":xplat").sourceSets.main
+		}
+	}
+}
+
 configurations {
 	common
 	shadowCommon

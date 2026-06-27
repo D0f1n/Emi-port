@@ -7,6 +7,18 @@ architectury {
 	neoForge()
 }
 
+loom {
+	// Merge the common (xplat) source set into this mod so dev runs load xplat classes on the same
+	// classloader as Minecraft. Without this, FML loads xplat on a separate classloader and statics
+	// like Minecraft.getInstance()/BuiltInRegistries are null/empty in common code.
+	mods {
+		main {
+			sourceSet sourceSets.main
+			sourceSet project(":xplat").sourceSets.main
+		}
+	}
+}
+
 configurations {
 	common
 	shadowCommon
