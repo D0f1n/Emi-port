@@ -5,8 +5,11 @@ import java.util.function.Function;
 
 import org.jetbrains.annotations.Nullable;
 
+import com.google.common.collect.Lists;
+
 import dev.emi.emi.EmiPort;
 import dev.emi.emi.registry.EmiComparisonDefaults;
+import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.network.chat.Component;
@@ -128,6 +131,23 @@ public abstract class EmiStack implements EmiIngredient {
 
 	public boolean isEqual(EmiStack stack, Comparison comparison) {
 		return getKey().equals(stack.getKey()) && comparison.compare(this, stack);
+	}
+
+	/** The raw tooltip text lines for this stack. */
+	public abstract List<Component> getTooltipText();
+
+	/**
+	 * The rendered tooltip components. Stage 4 returns a plain line-wrap of {@link #getTooltipText()};
+	 * EMI's custom remainder/tag/amount/mod-id tooltip components are screen-round work.
+	 * TODO(screen): reintroduce the enriched tooltip components.
+	 */
+	@Override
+	public List<ClientTooltipComponent> getTooltip() {
+		List<ClientTooltipComponent> list = Lists.newArrayList();
+		for (Component line : getTooltipText()) {
+			list.add(ClientTooltipComponent.create(line.getVisualOrderText()));
+		}
+		return list;
 	}
 
 	public abstract Component getName();

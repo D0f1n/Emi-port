@@ -1,9 +1,17 @@
 package dev.emi.emi.api.stack;
 
+import java.util.List;
+
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
 
 import dev.emi.emi.EmiPort;
+import dev.emi.emi.EmiRenderHelper;
+import dev.emi.emi.EmiUtil;
+import dev.emi.emi.api.render.EmiRender;
+import dev.emi.emi.runtime.EmiDrawContext;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.network.chat.Component;
@@ -11,6 +19,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.TooltipFlag;
 
 @ApiStatus.Internal
 public class ItemEmiStack extends EmiStack {
@@ -76,6 +85,32 @@ public class ItemEmiStack extends EmiStack {
 	@Override
 	public Identifier getId() {
 		return EmiPort.getItemRegistry().getKey(item);
+	}
+
+	@Override
+	public void render(GuiGraphicsExtractor draw, int x, int y, float delta, int flags) {
+		EmiDrawContext context = EmiDrawContext.wrap(draw);
+		ItemStack stack = getItemStack();
+		if ((flags & RENDER_ICON) != 0) {
+			// item() resolves the model (incl. modded) through ItemModelResolver/ItemStackRenderState
+			// internally; the empty count label suppresses the vanilla count so EMI draws its own amount.
+			draw.item(stack, x, y);
+			draw.itemDecorations(Minecraft.getInstance().font, stack, x, y, "");
+		}
+		if ((flags & RENDER_AMOUNT) != 0) {
+			String count = amount != 1 ? String.valueOf(amount) : "";
+			EmiRenderHelper.renderAmount(context, x, y, EmiPort.literal(count));
+		}
+		if ((flags & RENDER_REMAINDER) != 0) {
+			EmiRender.renderRemainderIcon(this, draw, x, y);
+		}
+	}
+
+	@Override
+	public List<Component> getTooltipText() {
+		Minecraft client = Minecraft.getInstance();
+		return getItemStack().getTooltipLines(Item.TooltipContext.of(client.level), client.player,
+			EmiUtil.showAdvancedTooltips() ? TooltipFlag.ADVANCED : TooltipFlag.NORMAL);
 	}
 
 	@Override

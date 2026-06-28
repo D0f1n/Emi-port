@@ -5,6 +5,7 @@ import java.util.List;
 import org.jetbrains.annotations.ApiStatus;
 
 import dev.emi.emi.EmiPort;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -73,6 +74,15 @@ public class EmptyEmiStack extends EmiStack {
 	@Override
 	public boolean isEqual(EmiStack stack) {
 		return stack == EMPTY;
+	}
+
+	@Override
+	public void render(GuiGraphicsExtractor draw, int x, int y, float delta, int flags) {
+	}
+
+	@Override
+	public List<Component> getTooltipText() {
+		return List.of();
 	}
 
 	@Override

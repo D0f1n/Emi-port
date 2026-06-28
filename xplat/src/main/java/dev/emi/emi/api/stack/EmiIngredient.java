@@ -2,15 +2,19 @@ package dev.emi.emi.api.stack;
 
 import java.util.List;
 
+import dev.emi.emi.api.render.EmiRenderable;
 import dev.emi.emi.registry.EmiTags;
 import dev.emi.emi.runtime.EmiTagKey;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.crafting.Ingredient;
 
-/**
- * Stage 3 scope: data side. Render and tooltip methods from the original return in the render round.
- */
-public interface EmiIngredient {
+public interface EmiIngredient extends EmiRenderable {
+	public static final int RENDER_ICON = 1;
+	public static final int RENDER_AMOUNT = 2;
+	public static final int RENDER_INGREDIENT = 4;
+	public static final int RENDER_REMAINDER = 8;
 
 	/**
 	 * @return The {@link EmiStack}s represented by this ingredient.
@@ -36,6 +40,15 @@ public interface EmiIngredient {
 	float getChance();
 
 	EmiIngredient setChance(float chance);
+
+	@Override
+	default void render(GuiGraphicsExtractor draw, int x, int y, float delta) {
+		render(draw, x, y, delta, -1);
+	}
+
+	void render(GuiGraphicsExtractor draw, int x, int y, float delta, int flags);
+
+	List<ClientTooltipComponent> getTooltip();
 
 	public static boolean areEqual(EmiIngredient a, EmiIngredient b) {
 		List<EmiStack> as = a.getEmiStacks();

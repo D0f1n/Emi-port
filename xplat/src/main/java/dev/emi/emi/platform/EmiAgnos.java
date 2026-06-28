@@ -1,5 +1,9 @@
 package dev.emi.emi.platform;
 
+import net.minecraft.core.component.DataComponentPatch;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.material.Fluid;
+
 /**
  * Loader-agnostic platform abstraction. Each loader provides a concrete subclass
  * ({@code EmiAgnosFabric} / {@code EmiAgnosNeoForge}) which registers itself into
@@ -34,4 +38,10 @@ public abstract class EmiAgnos {
 	}
 
 	protected abstract boolean isModLoadedAgnos(String id);
+
+	public static Component getFluidName(Fluid fluid, DataComponentPatch componentChanges) {
+		return delegate.getFluidNameAgnos(fluid, componentChanges);
+	}
+
+	protected abstract Component getFluidNameAgnos(Fluid fluid, DataComponentPatch componentChanges);
 }

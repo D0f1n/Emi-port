@@ -1,8 +1,13 @@
 package dev.emi.emi.api.stack;
 
+import java.util.List;
+
 import org.jetbrains.annotations.ApiStatus;
 
 import dev.emi.emi.EmiPort;
+import dev.emi.emi.api.render.EmiRender;
+import dev.emi.emi.platform.EmiAgnos;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -57,9 +62,23 @@ public class FluidEmiStack extends EmiStack {
 	}
 
 	@Override
+	public void render(GuiGraphicsExtractor draw, int x, int y, float delta, int flags) {
+		// TODO(render): loader-specific fluid sprite rendering (the original EmiAgnos.renderFluid). The
+		// sprite-atlas access path was rewritten on 26.2; the debug harness proves the item icon path, so
+		// the fluid icon is left as a no-op and returns with the screen round.
+		if ((flags & RENDER_REMAINDER) != 0) {
+			EmiRender.renderRemainderIcon(this, draw, x, y);
+		}
+	}
+
+	@Override
+	public List<Component> getTooltipText() {
+		// TODO(render): the original returns EmiAgnos.getFluidTooltip(fluid, components) (loader metadata).
+		return List.of(getName());
+	}
+
+	@Override
 	public Component getName() {
-		// TODO(render): original delegates to EmiAgnos.getFluidName(fluid, components) (loader-specific
-		// fluid rendering metadata). Placeholder uses the fluid id so the index has a non-null name.
-		return EmiPort.literal(getId().toString());
+		return EmiAgnos.getFluidName(fluid, componentChanges);
 	}
 }
