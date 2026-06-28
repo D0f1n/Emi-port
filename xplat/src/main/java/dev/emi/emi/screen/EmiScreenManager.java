@@ -6,10 +6,16 @@ import dev.emi.emi.EmiPort;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiDrawContext;
+import dev.emi.emi.search.EmiSearch;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 
 /**
  * The EMI overlay core, trimmed to the search panel. Reproduces EMI's grid layout/behaviour (entry size,
@@ -25,19 +31,104 @@ public class EmiScreenManager {
 	static final int TOP_MARGIN = 22; // reserves room for the search bar (checkpoint B)
 	private static final int BOTTOM_MARGIN = 22; // page controls
 
-	/** The stacks currently shown (filtered by search in checkpoint B); defaults to the whole index. */
+	/** The stacks currently shown (filtered by search); defaults to the whole index. */
 	public static List<? extends EmiIngredient> searchedStacks = List.of();
 	private static int page = 0;
 
 	// Grid geometry, recomputed every frame from the GUI geometry.
 	private static int gridX, gridY, columns, rows, pageSize;
 
+	/** EMI's search bar — a vanilla EditBox owned and driven by the manager (not a screen child). */
+	public static EditBox search;
+	private static Screen lastScreen;
+
+	public static void setSearchedStacks(List<? extends EmiIngredient> stacks) {
+		searchedStacks = stacks;
+		page = 0;
+	}
+
+	public static boolean isSearchFocused() {
+		return search != null && search.isFocused();
+	}
+
+	/** Called when the container screen closes — drop search focus so in-game typing isn't absorbed. */
+	public static void onScreenRemoved() {
+		if (search != null) {
+			search.setFocused(false);
+		}
+		lastScreen = null;
+	}
+
+	/** Clears the search and shows the full index; called when the index is (re)built on world join. */
+	public static void reset() {
+		searchedStacks = EmiStackList.stacks;
+		page = 0;
+		if (search != null) {
+			search.setValue("");
+			search.setFocused(false);
+		}
+	}
+
+	private static boolean isOverSearch(double mouseX, double mouseY) {
+		return search != null && search.isMouseOver(mouseX, mouseY);
+	}
+
+	// --- input routing (from the screen mixins) ---
+
+	public static boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		double mx = event.x();
+		double my = event.y();
+		if (isOverSearch(mx, my)) {
+			search.setFocused(true);
+			return true;
+		}
+		EmiIngredient stack = getStackAt((int) mx, (int) my);
+		if (stack != null && !stack.isEmpty()) {
+			// TODO(recipe): open the recipe view for the clicked stack. The click is intercepted here;
+			// the action lands in the recipe round.
+			return true;
+		}
+		if (search != null) {
+			search.setFocused(false);
+		}
+		return false;
+	}
+
+	public static boolean mouseScrolled(double mouseX, double mouseY, double verticalAmount) {
+		if (isInPanel((int) mouseX, (int) mouseY)) {
+			scrollPage(verticalAmount > 0 ? -1 : 1);
+			return true;
+		}
+		return false;
+	}
+
+	public static boolean keyPressed(KeyEvent event) {
+		if (isSearchFocused()) {
+			if (event.key() == 256) { // GLFW_KEY_ESCAPE — release focus instead of trapping the user
+				search.setFocused(false);
+				return true;
+			}
+			search.keyPressed(event);
+			return true; // consume so vanilla doesn't act on the key (keybinds, screen shortcuts, etc.)
+		}
+		return false;
+	}
+
+	public static boolean charTyped(CharacterEvent event) {
+		if (isSearchFocused()) {
+			return search.charTyped(event);
+		}
+		return false;
+	}
+
 	public static List<? extends EmiIngredient> getSearchSource() {
 		return EmiStackList.stacks;
 	}
 
 	private static List<? extends EmiIngredient> stacks() {
-		return searchedStacks.isEmpty() ? EmiStackList.stacks : searchedStacks;
+		// Returned as-is: an empty result from a non-matching query must show an empty grid (not the full
+		// list). The full list is seeded into searchedStacks on world join by reset().
+		return searchedStacks;
 	}
 
 	public static int maxPage() {
@@ -74,15 +165,36 @@ public class EmiScreenManager {
 		}
 	}
 
-	public static void render(GuiGraphicsExtractor graphics, int leftPos, int topPos, int imageWidth,
-			int imageHeight, int mouseX, int mouseY, float delta) {
+	public static void render(GuiGraphicsExtractor graphics, Screen screen, int leftPos, int topPos,
+			int imageWidth, int imageHeight, int mouseX, int mouseY, float delta) {
 		layout(leftPos, topPos, imageWidth, imageHeight);
+		// Drop search focus when the screen changes, so the EMI search never swallows input meant for a
+		// different screen (e.g. a vanilla anvil/sign rename field).
+		if (screen != lastScreen) {
+			lastScreen = screen;
+			if (search != null) {
+				search.setFocused(false);
+			}
+		}
 		if (pageSize <= 0) {
 			return;
 		}
 		EmiDrawContext context = EmiDrawContext.wrap(graphics);
 		List<? extends EmiIngredient> stacks = stacks();
 		int start = page * pageSize;
+
+		// Search bar at the top of the panel.
+		int barWidth = columns * ENTRY_SIZE;
+		if (search == null) {
+			search = new EditBox(client().font, gridX, 3, barWidth, 16, EmiPort.literal(""));
+			search.setMaxLength(64);
+			search.setEditable(true);
+			search.setResponder(EmiSearch::search);
+		}
+		search.setX(gridX);
+		search.setY(3);
+		search.setWidth(barWidth);
+		search.extractRenderState(graphics, mouseX, mouseY, delta);
 
 		// Grid of stacks.
 		for (int i = 0; i < pageSize && start + i < stacks.size(); i++) {
@@ -92,8 +204,9 @@ public class EmiScreenManager {
 				EmiIngredient.RENDER_ICON | EmiIngredient.RENDER_AMOUNT | EmiIngredient.RENDER_INGREDIENT);
 		}
 
-		// Page indicator.
-		context.drawTextWithShadow(EmiPort.literal((page + 1) + "/" + (maxPage() + 1)), gridX, gridY - 11);
+		// Page indicator, below the grid.
+		context.drawTextWithShadow(EmiPort.literal((page + 1) + "/" + (maxPage() + 1)),
+			gridX, gridY + rows * ENTRY_SIZE + 2);
 
 		// Hover highlight + tooltip.
 		EmiIngredient hovered = getStackAt(mouseX, mouseY);

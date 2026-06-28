@@ -8,6 +8,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import dev.emi.emi.mixin.accessor.AbstractContainerScreenAccessor;
 import dev.emi.emi.screen.EmiScreenManager;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 
 /**
@@ -22,7 +23,13 @@ public abstract class AbstractContainerScreenMixin {
 	private void emi$renderOverlay(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick,
 			CallbackInfo ci) {
 		AbstractContainerScreenAccessor accessor = (AbstractContainerScreenAccessor) (Object) this;
-		EmiScreenManager.render(graphics, accessor.getLeftPos(), accessor.getTopPos(),
+		EmiScreenManager.render(graphics, (Screen) (Object) this, accessor.getLeftPos(), accessor.getTopPos(),
 			accessor.getImageWidth(), accessor.getImageHeight(), mouseX, mouseY, partialTick);
+	}
+
+	@Inject(method = "removed()V", at = @At("HEAD"))
+	private void emi$removed(CallbackInfo ci) {
+		// Drop search focus when the container screen closes, so in-game typing isn't absorbed.
+		EmiScreenManager.onScreenRemoved();
 	}
 }

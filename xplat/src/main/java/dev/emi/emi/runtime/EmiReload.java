@@ -11,6 +11,7 @@ import dev.emi.emi.api.stack.serializer.EmiIngredientSerializer;
 import dev.emi.emi.registry.EmiIngredientSerializers;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.registry.EmiTags;
+import dev.emi.emi.screen.EmiScreenManager;
 import dev.emi.emi.stack.serializer.FluidEmiStackSerializer;
 import dev.emi.emi.stack.serializer.ItemEmiStackSerializer;
 import dev.emi.emi.stack.serializer.ListEmiIngredientSerializer;
@@ -54,6 +55,7 @@ public class EmiReload {
 			EmiTags.reload();
 			EmiStackList.reload();
 			EmiStackList.bake();
+			EmiScreenManager.reset();
 			EmiLog.info("EmiStackList: " + EmiStackList.stacks.size() + " stacks (built in "
 				+ (System.currentTimeMillis() - start) + "ms after world load)");
 		} catch (Throwable t) {

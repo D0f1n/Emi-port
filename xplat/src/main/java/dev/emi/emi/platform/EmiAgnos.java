@@ -44,4 +44,10 @@ public abstract class EmiAgnos {
 	}
 
 	protected abstract Component getFluidNameAgnos(Fluid fluid, DataComponentPatch componentChanges);
+
+	public static String getModName(String namespace) {
+		return delegate.getModNameAgnos(namespace);
+	}
+
+	protected abstract String getModNameAgnos(String namespace);
 }

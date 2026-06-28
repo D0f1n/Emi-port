@@ -2,6 +2,7 @@ package dev.emi.emi;
 
 import java.util.Random;
 
+import dev.emi.emi.platform.EmiAgnos;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
@@ -38,5 +39,9 @@ public class EmiUtil {
 
 	public static String translateId(String prefix, Identifier id) {
 		return prefix + id.getNamespace() + "." + id.getPath().replace('/', '.');
+	}
+
+	public static String getModName(String namespace) {
+		return EmiAgnos.getModName(namespace);
 	}
 }
