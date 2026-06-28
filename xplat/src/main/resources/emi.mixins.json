@@ -5,6 +5,8 @@
   "compatibilityLevel": "JAVA_25",
   "client": [
     "AbstractContainerScreenMixin",
+    "AbstractContainerScreenInputMixin",
+    "KeyboardHandlerMixin",
     "accessor.AbstractContainerScreenAccessor"
   ],
   "mixins": [
