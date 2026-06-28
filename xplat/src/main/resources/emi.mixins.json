@@ -4,6 +4,7 @@
   "package": "dev.emi.emi.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
+    "AbstractContainerScreenMixin",
     "accessor.AbstractContainerScreenAccessor"
   ],
   "mixins": [
