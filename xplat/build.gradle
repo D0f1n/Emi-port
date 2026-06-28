@@ -6,4 +6,6 @@ dependencies {
 	// Minecraft is provided by the root `subprojects` block.
 	// Loader API is compile-only here; concrete loader access lives in the platform modules.
 	compileOnly "net.fabricmc:fabric-loader:${rootProject.fabric_loader_version}"
+	// MixinExtras is bundled by both loaders at runtime; compile-only here so mixins are ready to use it.
+	compileOnly "io.github.llamalad7:mixinextras-common:0.5.4"
 }

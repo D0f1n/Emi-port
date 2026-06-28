@@ -2,6 +2,9 @@ modLoader = "javafml"
 loaderVersion = "[1,)"
 license = "MIT"
 
+[[mixins]]
+config = "emi.mixins.json"
+
 [[mods]]
 modId = "emi"
 version = "${version}"
