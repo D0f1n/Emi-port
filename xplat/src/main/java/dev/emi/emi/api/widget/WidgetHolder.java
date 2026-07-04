@@ -1,10 +1,17 @@
 package dev.emi.emi.api.widget;
 
+import java.util.Random;
+import java.util.function.Function;
+
+import dev.emi.emi.api.render.EmiTexture;
+import dev.emi.emi.api.stack.EmiIngredient;
+import dev.emi.emi.api.stack.EmiStack;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.FormattedCharSequence;
+
 /**
  * Holder that recipes add their display widgets to.
- *
- * <p>Checkpoint A scope: the bare holder contract, so the recipe model compiles. The concrete
- * widget factory defaults (slots, textures, text, arrows) land with the vanilla category displays.
  */
 public interface WidgetHolder {
 
@@ -13,4 +20,76 @@ public interface WidgetHolder {
 	int getHeight();
 
 	<T extends Widget> T add(T widget);
+
+	default SlotWidget addSlot(EmiIngredient ingredient, int x, int y) {
+		return add(new SlotWidget(ingredient, x, y));
+	}
+
+	default SlotWidget addSlot(int x, int y) {
+		return addSlot(EmiStack.EMPTY, x, y);
+	}
+
+	default TextureWidget addTexture(Identifier texture, int x, int y, int width, int height, int u, int v) {
+		return add(new TextureWidget(texture, x, y, width, height, u, v));
+	}
+
+	default TextureWidget addTexture(Identifier texture, int x, int y, int width, int height, int u, int v,
+			int regionWidth, int regionHeight, int textureWidth, int textureHeight) {
+		return add(new TextureWidget(texture, x, y, width, height, u, v,
+			regionWidth, regionHeight, textureWidth, textureHeight));
+	}
+
+	default TextureWidget addTexture(EmiTexture texture, int x, int y) {
+		return addTexture(texture.texture, x, y, texture.width, texture.height, texture.u, texture.v,
+			texture.regionWidth, texture.regionHeight, texture.textureWidth, texture.textureHeight);
+	}
+
+	default TextWidget addText(Component text, int x, int y, int color, boolean shadow) {
+		return addText(text.getVisualOrderText(), x, y, color, shadow);
+	}
+
+	default TextWidget addText(FormattedCharSequence text, int x, int y, int color, boolean shadow) {
+		return add(new TextWidget(text, x, y, color, shadow));
+	}
+
+	/**
+	 * @param time Filling time, in milliseconds
+	 */
+	default FillingArrowWidget addFillingArrow(int x, int y, int time) {
+		return add(new FillingArrowWidget(x, y, time));
+	}
+
+	/**
+	 * @param time Animation time, in milliseconds
+	 */
+	default AnimatedTextureWidget addAnimatedTexture(Identifier texture, int x, int y, int width, int height, int u, int v, int time,
+			boolean horizontal, boolean endToStart, boolean fullToEmpty) {
+		return add(new AnimatedTextureWidget(texture, x, y, width, height, u, v,
+			time, horizontal, endToStart, fullToEmpty));
+	}
+
+	/**
+	 * @param time Animation time, in milliseconds
+	 */
+	default AnimatedTextureWidget addAnimatedTexture(Identifier texture, int x, int y, int width, int height, int u, int v,
+			int regionWidth, int regionHeight, int textureWidth, int textureHeight, int time,
+			boolean horizontal, boolean endToStart, boolean fullToEmpty) {
+		return add(new AnimatedTextureWidget(texture, x, y, width, height, u, v,
+			regionWidth, regionHeight, textureWidth, textureHeight,
+			time, horizontal, endToStart, fullToEmpty));
+	}
+
+	/**
+	 * @param time Animation time, in milliseconds
+	 */
+	default AnimatedTextureWidget addAnimatedTexture(EmiTexture texture, int x, int y, int time,
+			boolean horizontal, boolean endToStart, boolean fullToEmpty) {
+		return addAnimatedTexture(texture.texture, x, y, texture.width, texture.height, texture.u, texture.v,
+			texture.regionWidth, texture.regionHeight, texture.textureWidth, texture.textureHeight,
+			time, horizontal, endToStart, fullToEmpty);
+	}
+
+	default GeneratedSlotWidget addGeneratedSlot(Function<Random, EmiIngredient> stackSupplier, int unique, int x, int y) {
+		return add(new GeneratedSlotWidget(stackSupplier, unique, x, y));
+	}
 }

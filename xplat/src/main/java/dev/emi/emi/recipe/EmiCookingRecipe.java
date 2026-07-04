@@ -2,11 +2,14 @@ package dev.emi.emi.recipe;
 
 import java.util.List;
 
+import dev.emi.emi.EmiPort;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.EmiRecipeCategory;
+import dev.emi.emi.api.render.EmiTexture;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.widget.WidgetHolder;
+import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.material.Fluids;
@@ -89,6 +92,18 @@ public class EmiCookingRecipe implements EmiRecipe {
 
 	@Override
 	public void addWidgets(WidgetHolder widgets) {
-		// Display widgets land with the vanilla-categories checkpoint.
+		widgets.addFillingArrow(24, 5, 50 * cookingTime).tooltip((mx, my) -> {
+			return List.of(ClientTooltipComponent.create(EmiPort.ordered(
+				EmiPort.translatable("emi.cooking.time", cookingTime / 20f))));
+		});
+		if (infiniBurn) {
+			widgets.addTexture(EmiTexture.FULL_FLAME, 1, 24);
+		} else {
+			widgets.addTexture(EmiTexture.EMPTY_FLAME, 1, 24);
+			widgets.addAnimatedTexture(EmiTexture.FULL_FLAME, 1, 24, 4000 / fuelMultiplier, false, true, true);
+		}
+		widgets.addText(EmiPort.ordered(EmiPort.translatable("emi.cooking.experience", experience)), 26, 28, -1, true);
+		widgets.addSlot(input, 0, 4);
+		widgets.addSlot(output, 56, 0).large(true).recipeContext(this);
 	}
 }

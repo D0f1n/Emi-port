@@ -5,6 +5,7 @@ import java.util.List;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.EmiRecipeCategory;
 import dev.emi.emi.api.recipe.VanillaEmiRecipeCategories;
+import dev.emi.emi.api.render.EmiTexture;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.widget.WidgetHolder;
@@ -57,6 +58,8 @@ public class EmiStonecuttingRecipe implements EmiRecipe {
 
 	@Override
 	public void addWidgets(WidgetHolder widgets) {
-		// Display widgets land with the vanilla-categories checkpoint.
+		widgets.addTexture(EmiTexture.EMPTY_ARROW, 26, 1);
+		widgets.addSlot(input, 0, 0);
+		widgets.addSlot(output, 58, 0).recipeContext(this);
 	}
 }

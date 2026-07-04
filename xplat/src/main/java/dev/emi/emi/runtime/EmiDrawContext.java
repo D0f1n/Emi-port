@@ -9,6 +9,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.FormattedCharSequence;
 
 /**
  * The EMI drawing context, rebuilt for 26.2.
@@ -78,6 +79,14 @@ public class EmiDrawContext {
 	}
 
 	public void drawTextWithShadow(Component text, int x, int y, int color) {
+		context.text(font(), text, x, y, color, true);
+	}
+
+	public void drawText(FormattedCharSequence text, int x, int y, int color) {
+		context.text(font(), text, x, y, color, false);
+	}
+
+	public void drawTextWithShadow(FormattedCharSequence text, int x, int y, int color) {
 		context.text(font(), text, x, y, color, true);
 	}
 
