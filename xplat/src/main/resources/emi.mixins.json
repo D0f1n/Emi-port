@@ -6,6 +6,7 @@
   "client": [
     "AbstractContainerScreenMixin",
     "AbstractContainerScreenInputMixin",
+    "ScreenMixin",
     "KeyboardHandlerMixin",
     "accessor.AbstractContainerScreenAccessor",
     "accessor.PotionBrewingAccessor",
