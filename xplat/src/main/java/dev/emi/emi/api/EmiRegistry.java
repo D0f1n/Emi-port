@@ -1,0 +1,55 @@
+package dev.emi.emi.api;
+
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+
+import dev.emi.emi.api.recipe.EmiRecipe;
+import dev.emi.emi.api.recipe.EmiRecipeCategory;
+import dev.emi.emi.api.stack.EmiIngredient;
+import net.minecraft.resources.Identifier;
+
+/**
+ * The registration surface handed to {@link EmiPlugin}s.
+ *
+ * <p>Port note, recipe round scope: the recipe-side registration methods. The original's stack
+ * sidebar mutators, comparisons, exclusion areas, drag-drop, stack providers and recipe handlers
+ * return with later rounds. The original's {@code getRecipeManager()} is gone on 26.2 — client-side
+ * recipe enumeration was removed in 1.21.2; the built-in plugin reads the harvested server displays
+ * instead.
+ */
+public interface EmiRegistry {
+
+	/**
+	 * Adds a recipe category.
+	 * Recipes are organized based on recipe category.
+	 */
+	void addCategory(EmiRecipeCategory category);
+
+	/**
+	 * Adds a workstation to a recipe category.
+	 */
+	void addWorkstation(EmiRecipeCategory category, EmiIngredient workstation);
+
+	/**
+	 * Adds a recipe to EMI that can be viewed and associated with its components.
+	 */
+	void addRecipe(EmiRecipe recipe);
+
+	/**
+	 * Adds a predicate to run on all current and future recipes to prevent certain ones from being added.
+	 */
+	void removeRecipes(Predicate<EmiRecipe> predicate);
+
+	/**
+	 * Adds a predicate to run on all current and future recipes to prevent certain ones with the given identifier from being added.
+	 */
+	default void removeRecipes(Identifier id) {
+		removeRecipes(r -> id.equals(r.getId()));
+	}
+
+	/**
+	 * Add recipes that are reliant on a majority of EMI metadata is populated.
+	 * The passed consumer will be run after all EMI plugins have executed.
+	 */
+	void addDeferredRecipes(Consumer<Consumer<EmiRecipe>> consumer);
+}

@@ -3,6 +3,7 @@ package dev.emi.emi.screen;
 import java.util.List;
 
 import dev.emi.emi.EmiPort;
+import dev.emi.emi.api.EmiApi;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiDrawContext;
@@ -84,8 +85,11 @@ public class EmiScreenManager {
 		}
 		EmiIngredient stack = getStackAt((int) mx, (int) my);
 		if (stack != null && !stack.isEmpty()) {
-			// TODO(recipe): open the recipe view for the clicked stack. The click is intercepted here;
-			// the action lands in the recipe round.
+			if (event.button() == 0) {
+				EmiApi.displayRecipes(stack);
+			} else if (event.button() == 1) {
+				EmiApi.displayUses(stack);
+			}
 			return true;
 		}
 		if (search != null) {

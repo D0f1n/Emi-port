@@ -1,6 +1,13 @@
 package dev.emi.emi.runtime;
 
+import java.util.List;
+import java.util.function.Consumer;
+
 import dev.emi.emi.EmiPort;
+import dev.emi.emi.VanillaPlugin;
+import dev.emi.emi.api.EmiPlugin;
+import dev.emi.emi.api.recipe.EmiRecipe;
+import dev.emi.emi.api.recipe.EmiRecipeCategory;
 import dev.emi.emi.api.stack.EmiRegistryAdapter;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.stack.FluidEmiStack;
@@ -9,6 +16,9 @@ import dev.emi.emi.api.stack.ListEmiIngredient;
 import dev.emi.emi.api.stack.TagEmiIngredient;
 import dev.emi.emi.api.stack.serializer.EmiIngredientSerializer;
 import dev.emi.emi.registry.EmiIngredientSerializers;
+import dev.emi.emi.registry.EmiRecipeSource;
+import dev.emi.emi.registry.EmiRecipes;
+import dev.emi.emi.registry.EmiRegistryImpl;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.registry.EmiTags;
 import dev.emi.emi.screen.EmiScreenManager;
@@ -21,12 +31,17 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.level.material.Fluid;
 
 /**
- * Minimal Stage 3 reload driver. The full {@code EmiReloadManager} (plugins, recipes, search, background
- * worker) returns in later rounds. Here we only register the vanilla registry adapters and build the
- * stack index, and crucially we do it <b>after world load</b> so the {@code new ItemStack} calls inside
- * {@link EmiStackList#reload()} are legal under the 26.1+ ItemStackTemplate lifecycle.
+ * The reload driver: registers the vanilla registry adapters, builds the stack index, then runs the
+ * recipe phase (harvest the 26.2 recipe displays, run the plugins, bake the recipe indices). All of
+ * it runs <b>after world load</b> so the {@code new ItemStack} calls are legal under the 26.1+
+ * ItemStackTemplate lifecycle. The full {@code EmiReloadManager} (search worker, reload screen)
+ * returns in later rounds.
  */
 public class EmiReload {
+	// Plugin discovery via loader entrypoints returns with the jemi round; for now the built-in
+	// vanilla plugin is the only one.
+	private static final List<EmiPlugin> PLUGINS = List.of(new VanillaPlugin());
+
 	private static boolean adaptersRegistered = false;
 	private static boolean serializersRegistered = false;
 	private static volatile boolean reloading = false;
@@ -58,11 +73,39 @@ public class EmiReload {
 			EmiScreenManager.reset();
 			EmiLog.info("EmiStackList: " + EmiStackList.stacks.size() + " stacks (built in "
 				+ (System.currentTimeMillis() - start) + "ms after world load)");
+			reloadRecipes();
 		} catch (Throwable t) {
 			EmiLog.error("EMI failed to build the stack index", t);
 		} finally {
 			reloading = false;
 		}
+	}
+
+	private static void reloadRecipes() {
+		long start = System.currentTimeMillis();
+		EmiRecipes.clear();
+		EmiRecipeSource.clear();
+		EmiRecipeSource.harvest();
+		EmiRegistryImpl registry = new EmiRegistryImpl();
+		for (EmiPlugin plugin : PLUGINS) {
+			try {
+				plugin.register(registry);
+			} catch (Throwable t) {
+				EmiLog.error("EMI plugin " + plugin.getClass().getName() + " failed to register", t);
+			}
+		}
+		for (Consumer<Consumer<EmiRecipe>> late : List.copyOf(EmiRecipes.lateRecipes)) {
+			try {
+				late.accept(EmiRecipes::addRecipe);
+			} catch (Throwable t) {
+				EmiLog.error("EMI deferred recipes failed to register", t);
+			}
+		}
+		EmiRecipes.bake();
+		for (EmiRecipeCategory category : EmiRecipes.manager.getCategories()) {
+			EmiLog.info("  " + category.getId() + ": " + EmiRecipes.manager.getRecipes(category).size() + " recipes");
+		}
+		EmiLog.info("Recipe phase done in " + (System.currentTimeMillis() - start) + "ms");
 	}
 
 	private static void registerAdapters() {
