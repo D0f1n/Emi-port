@@ -8,6 +8,7 @@ import dev.emi.emi.runtime.EmiTagKey;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.tags.TagKey;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.crafting.Ingredient;
 
 public interface EmiIngredient extends EmiRenderable {
@@ -72,14 +73,17 @@ public interface EmiIngredient extends EmiRenderable {
 		return EmiIngredient.of(EmiTags.getRawValues(EmiTagKey.of(key)), amount);
 	}
 
-	// TODO(recipe): Ingredient enumeration changed substantially in 1.21.2+ (HolderSet-based);
-	// reinstate the real conversion when the recipe layer lands.
 	public static EmiIngredient of(Ingredient ingredient) {
-		return EmiStack.EMPTY;
+		return of(ingredient, 1);
 	}
 
+	// On 1.21.2+ Ingredient is a HolderSet of items (no per-stack counts), enumerated via items().
 	public static EmiIngredient of(Ingredient ingredient, long amount) {
-		return EmiStack.EMPTY;
+		if (ingredient == null || ingredient.isEmpty()) {
+			return EmiStack.EMPTY;
+		}
+		return EmiTags.getIngredient(Item.class,
+			ingredient.items().map(h -> EmiStack.of(h.value())).toList(), amount);
 	}
 
 	public static EmiIngredient of(List<? extends EmiIngredient> list) {
