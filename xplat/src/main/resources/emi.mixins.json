@@ -7,7 +7,9 @@
     "AbstractContainerScreenMixin",
     "AbstractContainerScreenInputMixin",
     "KeyboardHandlerMixin",
-    "accessor.AbstractContainerScreenAccessor"
+    "accessor.AbstractContainerScreenAccessor",
+    "accessor.PotionBrewingAccessor",
+    "accessor.PotionBrewingMixAccessor"
   ],
   "mixins": [
   ],

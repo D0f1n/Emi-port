@@ -1,23 +1,50 @@
 package dev.emi.emi;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 
 import dev.emi.emi.api.EmiPlugin;
 import dev.emi.emi.api.EmiRegistry;
 import dev.emi.emi.api.recipe.EmiCraftingRecipe;
 import dev.emi.emi.api.recipe.EmiRecipeCategory;
 import dev.emi.emi.api.recipe.EmiRecipeSorting;
+import dev.emi.emi.api.render.EmiTexture;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
+import dev.emi.emi.mixin.accessor.PotionBrewingAccessor;
+import dev.emi.emi.mixin.accessor.PotionBrewingMixAccessor;
+import dev.emi.emi.recipe.EmiAnvilRecipe;
+import dev.emi.emi.recipe.EmiBrewingRecipe;
+import dev.emi.emi.recipe.EmiCompostingRecipe;
 import dev.emi.emi.recipe.EmiCookingRecipe;
+import dev.emi.emi.recipe.EmiFuelRecipe;
+import dev.emi.emi.recipe.EmiGrindstoneRecipe;
 import dev.emi.emi.recipe.EmiSmithingRecipe;
 import dev.emi.emi.recipe.EmiStonecuttingRecipe;
+import dev.emi.emi.recipe.special.EmiAnvilRepairItemRecipe;
 import dev.emi.emi.registry.EmiRecipeSource;
 import dev.emi.emi.registry.EmiRecipeSource.HarvestedRecipe;
+import dev.emi.emi.registry.EmiTags;
 import dev.emi.emi.runtime.EmiLog;
+import dev.emi.emi.runtime.EmiTagKey;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.Holder;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.alchemy.Potion;
+import net.minecraft.world.item.alchemy.PotionBrewing;
+import net.minecraft.world.item.alchemy.PotionContents;
+import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.display.FurnaceRecipeDisplay;
 import net.minecraft.world.item.crafting.display.RecipeDisplay;
@@ -26,6 +53,10 @@ import net.minecraft.world.item.crafting.display.ShapelessCraftingRecipeDisplay;
 import net.minecraft.world.item.crafting.display.SlotDisplay;
 import net.minecraft.world.item.crafting.display.SmithingRecipeDisplay;
 import net.minecraft.world.item.crafting.display.StonecutterRecipeDisplay;
+import net.minecraft.world.item.enchantment.Repairable;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.ComposterBlock;
+import net.minecraft.world.level.block.entity.FuelValues;
 
 import static dev.emi.emi.api.recipe.VanillaEmiRecipeCategories.*;
 
@@ -55,6 +86,16 @@ public class VanillaPlugin implements EmiPlugin {
 			EmiStack.of(Items.STONECUTTER), EmiStack.of(Items.STONECUTTER), EmiRecipeSorting.compareInputThenOutput());
 		SMITHING = new EmiRecipeCategory(EmiPort.id("minecraft:smithing"),
 			EmiStack.of(Items.SMITHING_TABLE), EmiStack.of(Items.SMITHING_TABLE), EmiRecipeSorting.compareInputThenOutput());
+		ANVIL_REPAIRING = new EmiRecipeCategory(EmiPort.id("emi:anvil_repairing"),
+			EmiStack.of(Items.ANVIL), EmiStack.of(Items.ANVIL));
+		GRINDING = new EmiRecipeCategory(EmiPort.id("emi:grinding"),
+			EmiStack.of(Items.GRINDSTONE), EmiStack.of(Items.GRINDSTONE));
+		BREWING = new EmiRecipeCategory(EmiPort.id("minecraft:brewing"),
+			EmiStack.of(Items.BREWING_STAND), EmiStack.of(Items.BREWING_STAND));
+		FUEL = new EmiRecipeCategory(EmiPort.id("emi:fuel"),
+			EmiTexture.FULL_FLAME, EmiTexture.FULL_FLAME, EmiRecipeSorting.compareInputThenOutput());
+		COMPOSTING = new EmiRecipeCategory(EmiPort.id("emi:composting"),
+			EmiStack.of(Items.COMPOSTER), EmiStack.of(Items.COMPOSTER), EmiRecipeSorting.compareInputThenOutput());
 
 		registry.addCategory(CRAFTING);
 		registry.addCategory(SMELTING);
@@ -63,6 +104,11 @@ public class VanillaPlugin implements EmiPlugin {
 		registry.addCategory(CAMPFIRE_COOKING);
 		registry.addCategory(STONECUTTING);
 		registry.addCategory(SMITHING);
+		registry.addCategory(ANVIL_REPAIRING);
+		registry.addCategory(GRINDING);
+		registry.addCategory(BREWING);
+		registry.addCategory(FUEL);
+		registry.addCategory(COMPOSTING);
 
 		registry.addWorkstation(CRAFTING, EmiStack.of(Items.CRAFTING_TABLE));
 		registry.addWorkstation(SMELTING, EmiStack.of(Items.FURNACE));
@@ -72,6 +118,12 @@ public class VanillaPlugin implements EmiPlugin {
 		registry.addWorkstation(CAMPFIRE_COOKING, EmiStack.of(Items.SOUL_CAMPFIRE));
 		registry.addWorkstation(STONECUTTING, EmiStack.of(Items.STONECUTTER));
 		registry.addWorkstation(SMITHING, EmiStack.of(Items.SMITHING_TABLE));
+		registry.addWorkstation(ANVIL_REPAIRING, EmiStack.of(Items.ANVIL));
+		registry.addWorkstation(ANVIL_REPAIRING, EmiStack.of(Items.CHIPPED_ANVIL));
+		registry.addWorkstation(ANVIL_REPAIRING, EmiStack.of(Items.DAMAGED_ANVIL));
+		registry.addWorkstation(GRINDING, EmiStack.of(Items.GRINDSTONE));
+		registry.addWorkstation(BREWING, EmiStack.of(Items.BREWING_STAND));
+		registry.addWorkstation(COMPOSTING, EmiStack.of(Items.COMPOSTER));
 
 		for (HarvestedRecipe entry : EmiRecipeSource.recipes) {
 			try {
@@ -79,6 +131,170 @@ public class VanillaPlugin implements EmiPlugin {
 			} catch (Exception e) {
 				EmiLog.warn("Failed to map recipe display for " + entry.id(), e);
 			}
+		}
+
+		safely("repair", () -> addRepair(registry));
+		safely("brewing", () -> addBrewing(registry));
+		safely("fuel", () -> addFuel(registry));
+		safely("composting", () -> addComposting(registry));
+	}
+
+	private static void addRepair(EmiRegistry registry) {
+		// On 26.2 repair materials live in the REPAIRABLE data component; tool/armor material
+		// classes are gone. Enchanting/disenchanting recipes are deferred to the polish round.
+		for (Item i : EmiPort.getItemRegistry()) {
+			try {
+				if (i.components().getOrDefault(DataComponents.MAX_DAMAGE, 0) <= 0) {
+					continue;
+				}
+				Repairable repairable = i.components().get(DataComponents.REPAIRABLE);
+				if (repairable != null && repairable.items().size() > 0) {
+					Item material = repairable.items().get(0).value();
+					Identifier id = synthetic("anvil/repairing/material", EmiUtil.subId(i) + "/" + EmiUtil.subId(material));
+					registry.addRecipe(new EmiAnvilRecipe(EmiStack.of(i),
+						EmiIngredient.of(Ingredient.of(repairable.items())), id));
+				}
+				registry.addRecipe(new EmiAnvilRepairItemRecipe(i, synthetic("anvil/repairing/tool", EmiUtil.subId(i))));
+				registry.addRecipe(new EmiGrindstoneRecipe(i, synthetic("grindstone/repairing", EmiUtil.subId(i))));
+			} catch (Throwable t) {
+				EmiLog.warn("Exception thrown registering repair recipes for " + EmiUtil.subId(i), t);
+			}
+		}
+	}
+
+	private static void addBrewing(EmiRegistry registry) {
+		Level level = Minecraft.getInstance().level;
+		if (level == null) {
+			return;
+		}
+		PotionBrewing brewing = level.potionBrewing();
+		PotionBrewingAccessor access = (PotionBrewingAccessor) brewing;
+		List<Ingredient> containers = access.emi$getContainers();
+		for (Object mixObj : access.emi$getPotionMixes()) {
+			PotionBrewingMixAccessor mix = (PotionBrewingMixAccessor) mixObj;
+			for (Ingredient container : containers) {
+				container.items().forEach(containerItem -> {
+					try {
+						@SuppressWarnings("unchecked")
+						Holder<Potion> from = (Holder<Potion>) mix.emi$getFrom();
+						@SuppressWarnings("unchecked")
+						Holder<Potion> to = (Holder<Potion>) mix.emi$getTo();
+						Item ingredientItem = mix.emi$getIngredient().items()
+							.findFirst().map(Holder::value).orElse(Items.AIR);
+						Identifier id = synthetic("brewing/potion", EmiUtil.subId(containerItem.value())
+							+ "/" + EmiUtil.subId(ingredientItem)
+							+ "/" + EmiUtil.subId(from.unwrapKey().get().identifier())
+							+ "/" + EmiUtil.subId(to.unwrapKey().get().identifier()));
+						registry.addRecipe(new EmiBrewingRecipe(
+							EmiStack.of(PotionContents.createItemStack(containerItem.value(), from)),
+							EmiIngredient.of(mix.emi$getIngredient()),
+							EmiStack.of(PotionContents.createItemStack(containerItem.value(), to)), id));
+					} catch (Exception e) {
+						EmiLog.warn("Failed to register a potion brewing recipe", e);
+					}
+				});
+			}
+		}
+		List<Holder.Reference<Potion>> potions = EmiPort.getRegistryAccess()
+			.lookupOrThrow(Registries.POTION).listElements().toList();
+		for (Object mixObj : access.emi$getContainerMixes()) {
+			PotionBrewingMixAccessor mix = (PotionBrewingMixAccessor) mixObj;
+			for (Holder<Potion> potion : potions) {
+				try {
+					@SuppressWarnings("unchecked")
+					Holder<Item> from = (Holder<Item>) mix.emi$getFrom();
+					@SuppressWarnings("unchecked")
+					Holder<Item> to = (Holder<Item>) mix.emi$getTo();
+					Identifier id = synthetic("brewing/container", EmiUtil.subId(from.value())
+						+ "/" + EmiUtil.subId(to.value())
+						+ "/" + EmiUtil.subId(potion.unwrapKey().get().identifier()));
+					registry.addRecipe(new EmiBrewingRecipe(
+						EmiStack.of(PotionContents.createItemStack(from.value(), potion)),
+						EmiIngredient.of(mix.emi$getIngredient()),
+						EmiStack.of(PotionContents.createItemStack(to.value(), potion)), id));
+				} catch (Exception e) {
+					EmiLog.warn("Failed to register a container brewing recipe", e);
+				}
+			}
+		}
+	}
+
+	private static void addFuel(EmiRegistry registry) {
+		Level level = Minecraft.getInstance().level;
+		if (level == null) {
+			return;
+		}
+		FuelValues fuelValues = level.fuelValues();
+		Set<Item> fuels = Set.copyOf(fuelValues.fuelItems());
+		compressRecipesToTags(fuels, (a, b) -> {
+			return Integer.compare(fuelValues.burnDuration(a.getDefaultInstance()), fuelValues.burnDuration(b.getDefaultInstance()));
+		}, tag -> {
+			EmiIngredient stack = EmiIngredient.of(tag.raw());
+			Item item = stack.getEmiStacks().get(0).getItemStack().getItem();
+			int time = fuelValues.burnDuration(item.getDefaultInstance());
+			registry.addRecipe(new EmiFuelRecipe(stack, time, synthetic("fuel/tag", EmiUtil.subId(tag.id()))));
+		}, item -> {
+			int time = fuelValues.burnDuration(item.getDefaultInstance());
+			registry.addRecipe(new EmiFuelRecipe(EmiStack.of(item), time, synthetic("fuel/item", EmiUtil.subId(item))));
+		});
+	}
+
+	private static void addComposting(EmiRegistry registry) {
+		compressRecipesToTags(ComposterBlock.COMPOSTABLES.keySet().stream()
+			.map(i -> i.asItem()).collect(Collectors.toSet()), (a, b) -> {
+				return Float.compare(ComposterBlock.COMPOSTABLES.getFloat(a), ComposterBlock.COMPOSTABLES.getFloat(b));
+			}, tag -> {
+				EmiIngredient stack = EmiIngredient.of(tag.raw());
+				Item item = stack.getEmiStacks().get(0).getItemStack().getItem();
+				float chance = ComposterBlock.COMPOSTABLES.getFloat(item);
+				registry.addRecipe(new EmiCompostingRecipe(stack, chance, synthetic("composting/tag", EmiUtil.subId(tag.id()))));
+			}, item -> {
+				float chance = ComposterBlock.COMPOSTABLES.getFloat(item);
+				registry.addRecipe(new EmiCompostingRecipe(EmiStack.of(item), chance, synthetic("composting/item", EmiUtil.subId(item))));
+			});
+	}
+
+	private static void compressRecipesToTags(Set<Item> stacks, Comparator<Item> comparator, Consumer<EmiTagKey<Item>> tagConsumer, Consumer<Item> itemConsumer) {
+		Set<Item> handled = Sets.newHashSet();
+		outer:
+		for (EmiTagKey<Item> key : EmiTags.getTags(EmiPort.getItemRegistry())) {
+			List<Item> items = key.getList();
+			if (items.size() < 2) {
+				continue;
+			}
+			Item base = items.get(0);
+			if (!stacks.contains(base)) {
+				continue;
+			}
+			for (int i = 1; i < items.size(); i++) {
+				Item item = items.get(i);
+				if (!stacks.contains(item) || comparator.compare(base, item) != 0) {
+					continue outer;
+				}
+			}
+			if (handled.containsAll(items)) {
+				continue;
+			}
+			handled.addAll(items);
+			tagConsumer.accept(key);
+		}
+		for (Item item : stacks) {
+			if (handled.contains(item)) {
+				continue;
+			}
+			itemConsumer.accept(item);
+		}
+	}
+
+	private static Identifier synthetic(String type, String name) {
+		return EmiPort.id("emi", "/" + type + "/" + name);
+	}
+
+	private static void safely(String name, Runnable runnable) {
+		try {
+			runnable.run();
+		} catch (Throwable t) {
+			EmiLog.warn("Exception thrown when reloading " + name + " step in vanilla EMI plugin", t);
 		}
 	}
 

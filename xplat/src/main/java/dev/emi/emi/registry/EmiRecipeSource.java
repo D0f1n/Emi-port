@@ -67,8 +67,13 @@ public class EmiRecipeSource {
 				Identifier id = holder.id().identifier();
 				ids.put(id, holder);
 				try {
-					for (RecipeDisplay display : holder.value().display()) {
-						list.add(new HarvestedRecipe(id, display, holder.value().getType()));
+					List<RecipeDisplay> displays = holder.value().display();
+					for (int i = 0; i < displays.size(); i++) {
+						// Recipes with several displays (e.g. special crafting variants) get unique
+						// synthetic ids past the first, per EMI's synthetic id convention.
+						Identifier displayId = i == 0 ? id
+							: EmiPort.id("emi", "/" + id.getNamespace() + "/" + id.getPath() + "/" + i);
+						list.add(new HarvestedRecipe(displayId, displays.get(i), holder.value().getType()));
 					}
 				} catch (Exception e) {
 					EmiLog.warn("Failed to read displays for recipe " + id, e);

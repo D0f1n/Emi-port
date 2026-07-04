@@ -1,0 +1,19 @@
+{
+  "emi.category.minecraft.crafting": "Crafting",
+  "emi.category.minecraft.smelting": "Smelting",
+  "emi.category.minecraft.blasting": "Blasting",
+  "emi.category.minecraft.smoking": "Smoking",
+  "emi.category.minecraft.campfire_cooking": "Campfire Cooking",
+  "emi.category.minecraft.stonecutting": "Stonecutting",
+  "emi.category.minecraft.smithing": "Smithing",
+  "emi.category.emi.anvil_repairing": "Anvil Repairing",
+  "emi.category.minecraft.brewing": "Brewing",
+  "emi.category.emi.grinding": "Grinding",
+  "emi.category.emi.fuel": "Fuel",
+  "emi.category.emi.composting": "Composting",
+  "emi.cooking.experience": "%s XP",
+  "emi.cooking.time": "%s Seconds",
+  "emi.fuel_time.items": "Smelts %s item(s)",
+  "tooltip.emi.chance.consume": "Consumption chance: %s%%",
+  "tooltip.emi.chance.produce": "Production chance: %s%%"
+}
