@@ -8,6 +8,8 @@ import java.util.stream.Stream;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
+import org.jetbrains.annotations.Nullable;
+
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.EmiRecipeCategory;
 import dev.emi.emi.api.recipe.EmiRecipeManager;
@@ -15,8 +17,13 @@ import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.registry.EmiRecipes;
 import dev.emi.emi.registry.EmiStackList;
-import dev.emi.emi.runtime.EmiLog;
+import dev.emi.emi.runtime.EmiHistory;
 import dev.emi.emi.screen.EmiScreenManager;
+import dev.emi.emi.screen.RecipeScreen;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 
 /**
  * The public static facade of EMI.
@@ -25,9 +32,20 @@ import dev.emi.emi.screen.EmiScreenManager;
  * recipe tree (BoM) and hovered-stack queries return with later rounds.
  */
 public class EmiApi {
+	private static final Minecraft client = Minecraft.getInstance();
 
 	public static List<EmiStack> getIndexStacks() {
 		return EmiStackList.stacks;
+	}
+
+	public static @Nullable AbstractContainerScreen<?> getHandledScreen() {
+		Screen s = client.gui.screen();
+		if (s instanceof AbstractContainerScreen<?> hs) {
+			return hs;
+		} else if (s instanceof RecipeScreen rs) {
+			return rs.old;
+		}
+		return null;
 	}
 
 	public static EmiRecipeManager getRecipeManager() {
@@ -88,7 +106,18 @@ public class EmiApi {
 	}
 
 	public static void focusRecipe(EmiRecipe recipe) {
-		// Wired to the recipe screen with the screen checkpoint.
+		if (client.gui.screen() instanceof RecipeScreen rs) {
+			rs.focusRecipe(recipe);
+		}
+	}
+
+	private static void push() {
+		if (client.gui.screen() instanceof RecipeScreen rs) {
+			EmiHistory.push(rs);
+		} else {
+			EmiHistory.clear();
+			EmiHistory.push(client.gui.screen());
+		}
 	}
 
 	private static List<EmiRecipe> pruneSources(List<EmiRecipe> list, EmiStack context) {
@@ -143,9 +172,18 @@ public class EmiApi {
 		recipes = recipes.entrySet().stream().filter(e -> !e.getValue().isEmpty())
 			.collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
 		if (!recipes.isEmpty()) {
-			// The screen checkpoint replaces this log with opening the recipe screen.
-			int total = recipes.values().stream().mapToInt(List::size).sum();
-			EmiLog.info("Found " + total + " recipes in " + recipes.size() + " categories for " + stack);
+			if (getHandledScreen() == null) {
+				client.setScreenAndShow(new InventoryScreen(client.player));
+			}
+			if (client.gui.screen() instanceof AbstractContainerScreen<?> hs) {
+				push();
+				client.setScreenAndShow(new RecipeScreen(hs, recipes));
+			} else if (client.gui.screen() instanceof RecipeScreen rs) {
+				push();
+				RecipeScreen n = new RecipeScreen(rs.old, recipes);
+				client.setScreenAndShow(n);
+				n.focusCategory(rs.getFocusedCategory());
+			}
 		}
 	}
 }

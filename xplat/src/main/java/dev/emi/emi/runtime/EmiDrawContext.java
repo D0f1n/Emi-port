@@ -86,6 +86,10 @@ public class EmiDrawContext {
 		context.text(font(), text, x, y, color, false);
 	}
 
+	public void drawCenteredTextWithShadow(Component text, int x, int y, int color) {
+		context.centeredText(font(), text, x, y, color);
+	}
+
 	public void drawTextWithShadow(FormattedCharSequence text, int x, int y, int color) {
 		context.text(font(), text, x, y, color, true);
 	}
