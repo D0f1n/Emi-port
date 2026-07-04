@@ -16,6 +16,7 @@ import dev.emi.emi.api.stack.ListEmiIngredient;
 import dev.emi.emi.api.stack.TagEmiIngredient;
 import dev.emi.emi.api.stack.serializer.EmiIngredientSerializer;
 import dev.emi.emi.registry.EmiIngredientSerializers;
+import dev.emi.emi.registry.EmiRecipeFiller;
 import dev.emi.emi.registry.EmiRecipeSource;
 import dev.emi.emi.registry.EmiRecipes;
 import dev.emi.emi.registry.EmiRegistryImpl;
@@ -84,6 +85,7 @@ public class EmiReload {
 	private static void reloadRecipes() {
 		long start = System.currentTimeMillis();
 		EmiRecipes.clear();
+		EmiRecipeFiller.clear();
 		EmiRecipeSource.clear();
 		EmiRecipeSource.harvest();
 		EmiRegistryImpl registry = new EmiRegistryImpl();

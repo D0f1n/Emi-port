@@ -5,8 +5,11 @@ import java.util.function.Predicate;
 
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.EmiRecipeCategory;
+import dev.emi.emi.api.recipe.handler.EmiRecipeHandler;
 import dev.emi.emi.api.stack.EmiIngredient;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.MenuType;
 
 /**
  * The registration surface handed to {@link EmiPlugin}s.
@@ -52,4 +55,10 @@ public interface EmiRegistry {
 	 * The passed consumer will be run after all EMI plugins have executed.
 	 */
 	void addDeferredRecipes(Consumer<Consumer<EmiRecipe>> consumer);
+
+	/**
+	 * Adds a recipe handler for a given menu type, to craft recipes in that menu.
+	 * A null type is used for the player's own inventory menu.
+	 */
+	<T extends AbstractContainerMenu> void addRecipeHandler(MenuType<T> type, EmiRecipeHandler<T> handler);
 }

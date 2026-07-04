@@ -10,11 +10,15 @@ import dev.emi.emi.EmiRenderHelper;
 import dev.emi.emi.api.EmiApi;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.EmiRecipeCategory;
+import dev.emi.emi.api.recipe.handler.EmiCraftContext;
+import dev.emi.emi.api.recipe.handler.EmiRecipeHandler;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.widget.Bounds;
+import dev.emi.emi.api.widget.RecipeFillButtonWidget;
 import dev.emi.emi.api.widget.SlotWidget;
 import dev.emi.emi.api.widget.Widget;
+import dev.emi.emi.registry.EmiRecipeFiller;
 import dev.emi.emi.runtime.EmiDrawContext;
 import dev.emi.emi.runtime.EmiHistory;
 import dev.emi.emi.runtime.EmiLog;
@@ -37,8 +41,8 @@ import net.minecraft.sounds.SoundEvents;
  *
  * <p>Port notes for 26.2: the screen renders through {@code extractRenderState} (two-phase GUI
  * pipeline), input arrives as event records, and the arrow buttons are EMI-drawn rather than
- * vanilla button children. The BoM resolution button and per-recipe side buttons (craft fill —
- * TODO(network) — tree/default/screenshot) return with later rounds.
+ * vanilla button children. Of the per-recipe side buttons only craft fill is present; the BoM
+ * resolution button and the tree/default/screenshot buttons return with later rounds.
  */
 public class RecipeScreen extends Screen {
 	private Map<EmiRecipeCategory, List<EmiRecipe>> recipes;
@@ -202,6 +206,7 @@ public class RecipeScreen extends Screen {
 				EmiLog.error("Error rendering widget", e);
 				group.error(e);
 			}
+			renderFillFeedback(group, context, mx, my);
 			context.pop();
 		}
 
@@ -243,6 +248,31 @@ public class RecipeScreen extends Screen {
 		RecipeTab rTab = getTabAt(mouseX, mouseY);
 		if (rTab != null) {
 			EmiRenderHelper.drawTooltip(context, rTab.category.getTooltip(), mouseX, mouseY);
+		}
+	}
+
+	// On hover over the fill button, the handler paints availability feedback (red overlay on
+	// missing ingredient slots) over the recipe's own widgets.
+	@SuppressWarnings({"unchecked", "rawtypes"})
+	private void renderFillFeedback(WidgetGroup group, EmiDrawContext context, int mx, int my) {
+		for (Widget widget : group.widgets) {
+			if (widget instanceof RecipeFillButtonWidget) {
+				if (widget.getBounds().contains(mx, my)) {
+					AbstractContainerScreen hs = EmiApi.getHandledScreen();
+					if (hs != null && group.recipe != null) {
+						try {
+							EmiRecipeHandler handler = EmiRecipeFiller.getFirstValidHandler(group.recipe, hs);
+							if (handler != null) {
+								handler.render(group.recipe, new EmiCraftContext(hs, handler.getInventory(hs),
+									EmiCraftContext.Type.FILL_BUTTON), group.widgets, context.raw());
+							}
+						} catch (Throwable e) {
+							EmiLog.error("Error rendering fill feedback", e);
+						}
+					}
+					break;
+				}
+			}
 		}
 	}
 
