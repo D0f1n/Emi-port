@@ -86,6 +86,19 @@ public class EmiRenderHelper {
 		context.drawTexture(texture, x + coriw, y + corih, cor,        cor,         u + corcen, v + corcen, cor, cor, 256, 256);
 	}
 
+	public static void drawScroll(EmiDrawContext context, int x, int y, int width, int height, int progress, int total, int color) {
+		if (total <= 1) {
+			return;
+		}
+		int start = x + width * progress / total;
+		int end = start + Math.max(width / total, 1);
+		if (progress == total - 1) {
+			end = x + width;
+			start = end - Math.max(width / total, 1);
+		}
+		context.fill(start, y, end - start, height, color);
+	}
+
 	public static Component getPageText(int page, int total, int maxWidth) {
 		Component text = EmiPort.translatable("emi.page", page, total);
 		if (CLIENT.font.width(text) > maxWidth) {

@@ -3,10 +3,13 @@ package dev.emi.emi.screen;
 import java.util.List;
 
 import dev.emi.emi.EmiPort;
+import dev.emi.emi.EmiRenderHelper;
 import dev.emi.emi.api.EmiApi;
 import dev.emi.emi.api.stack.EmiIngredient;
+import dev.emi.emi.api.widget.Bounds;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiDrawContext;
+import dev.emi.emi.screen.widget.SizedButtonWidget;
 import dev.emi.emi.search.EmiSearch;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -17,31 +20,44 @@ import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPosition
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.network.chat.Component;
 
 /**
- * The EMI overlay core, trimmed to the search panel. Reproduces EMI's grid layout/behaviour (entry size,
- * columns/rows from the available space beside the GUI, pagination) without the original's 4-panel
- * sidebar/favourites/history/config machinery. Driven from {@code AbstractContainerScreenMixin}.
- *
- * <p>Stage 6 checkpoint A: panel + paginated item grid + hover tooltip. The search bar (B) and input
- * routing (C) build on this.
+ * The EMI overlay core, trimmed to the main index panel and the search bar. Reproduces the original's
+ * right-sidebar {@code ScreenSpace} layout math and the bottom-center search bar with EMI 1.21.1 config
+ * defaults inlined, without the 4-panel sidebar/favourites/history machinery. Driven from
+ * {@code ScreenMixin} for container screens and directly from {@link RecipeScreen}.
  */
 public class EmiScreenManager {
-	static final int ENTRY_SIZE = 18; // 16px icon + 1px padding each side
-	private static final int SIDE_MARGIN = 6;
-	static final int TOP_MARGIN = 22; // reserves room for the search bar (checkpoint B)
-	private static final int BOTTOM_MARGIN = 22; // page controls
+	private static final int PADDING_SIZE = 1;
+	static final int ENTRY_SIZE = 16 + PADDING_SIZE * 2;
+	// EMI 1.21.1 right-sidebar defaults, inlined. TODO(polish): config
+	private static final int MAX_COLUMNS = 12; // ui.right-sidebar-size columns
+	private static final int MAX_ROWS = 100; // ui.right-sidebar-size rows
+	private static final int MARGIN = 2; // ui.right-sidebar-margins, all sides
+	private static final int HEADER_OFFSET = 18; // ui.right-sidebar-header = VISIBLE
+	// Theme TRANSPARENT: no background, zero padding. TODO(polish): VANILLA/MODERN themes
+	private static final int SEARCH_WIDTH = 160; // centered search bar width (ui.center-search-bar = true)
 
 	/** The stacks currently shown (filtered by search); defaults to the whole index. */
 	public static List<? extends EmiIngredient> searchedStacks = List.of();
 	private static int page = 0;
 
-	// Grid geometry, recomputed every frame from the GUI geometry.
-	private static int gridX, gridY, columns, rows, pageSize;
+	/** The main index panel region, rebuilt when the screen or GUI geometry changes. */
+	private static ScreenSpace space;
+	private static int lastWidth, lastHeight, lastGuiRight;
 
 	/** EMI's search bar — a vanilla EditBox owned and driven by the manager (not a screen child). */
 	public static EditBox search;
 	private static Screen lastScreen;
+
+	// Header page-turn arrows, as in the original sidebar header.
+	private static final SizedButtonWidget pageLeft = new SizedButtonWidget(0, 0, 16, 16, 224, 0,
+		EmiScreenManager::hasMultiplePages, w -> scrollPage(-1));
+	private static final SizedButtonWidget pageRight = new SizedButtonWidget(0, 0, 16, 16, 240, 0,
+		EmiScreenManager::hasMultiplePages, w -> scrollPage(1));
+	// TODO(polish): sidebar cycle button (INDEX/CRAFTABLES) once the craftables page exists
+	// TODO(polish): config (emi) and recipe tree buttons at the bottom left
 
 	public static void setSearchedStacks(List<? extends EmiIngredient> stacks) {
 		searchedStacks = stacks;
@@ -77,13 +93,16 @@ public class EmiScreenManager {
 	// --- input routing (from the screen mixins) ---
 
 	public static boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		double mx = event.x();
-		double my = event.y();
+		int mx = (int) event.x();
+		int my = (int) event.y();
 		if (isOverSearch(mx, my)) {
 			search.setFocused(true);
 			return true;
 		}
-		EmiIngredient stack = getStackAt((int) mx, (int) my);
+		if (pageLeft.mouseClicked(mx, my, event.button()) || pageRight.mouseClicked(mx, my, event.button())) {
+			return true;
+		}
+		EmiIngredient stack = getStackAt(mx, my);
 		if (stack != null && !stack.isEmpty()) {
 			if (event.button() == 0) {
 				EmiApi.displayRecipes(stack);
@@ -135,43 +154,126 @@ public class EmiScreenManager {
 		return searchedStacks;
 	}
 
-	public static int maxPage() {
-		if (pageSize <= 0) {
-			return 0;
+	private static boolean hasMultiplePages() {
+		return space != null && stacks().size() > space.pageSize;
+	}
+
+	private static int totalPages() {
+		if (space == null || space.pageSize <= 0) {
+			return 1;
 		}
-		return Math.max(0, (stacks().size() - 1) / pageSize);
+		return (stacks().size() - 1) / space.pageSize + 1;
 	}
 
-	public static void setPage(int p) {
-		page = Math.max(0, Math.min(p, maxPage()));
-	}
-
+	/** Turns pages with wrap-around, as the original sidebar does. */
 	public static void scrollPage(int delta) {
-		setPage(page + delta);
+		page += delta;
+		wrapPage();
 	}
 
-	/** Recomputes the grid region to the right of the GUI and clamps the page. */
-	private static void layout(int leftPos, int topPos, int imageWidth, int imageHeight) {
+	private static void wrapPage() {
+		int totalPages = totalPages();
+		if (page >= totalPages) {
+			page = 0;
+		} else if (page < 0) {
+			page = totalPages - 1;
+		}
+	}
+
+	/**
+	 * Rebuilds the right-panel {@code ScreenSpace} from the GUI geometry — the original's
+	 * {@code recalculate} + {@code createScreenSpace} for the RIGHT sidebar with default settings:
+	 * align RIGHT/TOP, margins 2, transparent theme, visible header.
+	 */
+	private static void recalculate(int guiRight) {
 		Minecraft client = Minecraft.getInstance();
 		int screenWidth = client.getWindow().getGuiScaledWidth();
 		int screenHeight = client.getWindow().getGuiScaledHeight();
-		int left = leftPos + imageWidth + SIDE_MARGIN;
-		int right = screenWidth - SIDE_MARGIN;
-		int top = TOP_MARGIN;
-		int bottom = screenHeight - BOTTOM_MARGIN;
-		columns = Math.max(0, (right - left) / ENTRY_SIZE);
-		rows = Math.max(0, (bottom - top) / ENTRY_SIZE);
-		pageSize = columns * rows;
-		gridX = left;
-		gridY = top;
-		if (page > maxPage()) {
-			page = maxPage();
+		if (space != null && lastWidth == screenWidth && lastHeight == screenHeight && lastGuiRight == guiRight) {
+			return;
 		}
+		lastWidth = screenWidth;
+		lastHeight = screenHeight;
+		lastGuiRight = guiRight;
+
+		int right = Math.min(screenWidth - ENTRY_SIZE * 2, guiRight);
+		Bounds bounds = new Bounds(right, 0, screenWidth - right, screenHeight);
+		// TODO(polish): exclusion areas (recipe book, plugin-provided) — empty for now
+		List<Bounds> exclusion = List.of();
+
+		// Try a more optimistic approach to position the bounding box slightly more
+		// pleasantly if applicable
+		int idealWidth = Math.min(MAX_COLUMNS * ENTRY_SIZE + MARGIN * 2, bounds.width());
+		int idealHeight = Math.min(MAX_ROWS * ENTRY_SIZE + MARGIN * 2 + HEADER_OFFSET, bounds.height());
+		// Align RIGHT (the original keys both axes of the ideal box off the horizontal alignment)
+		int idealX = bounds.right() - idealWidth;
+		int idealY = bounds.bottom() - idealHeight;
+		Bounds idealBounds = constrainBounds(exclusion, new Bounds(idealX, idealY, idealWidth, idealHeight));
+
+		bounds = constrainBounds(exclusion, bounds);
+
+		if (Math.min(idealWidth, idealBounds.width()) * Math.min(idealHeight, idealBounds.height()) > Math
+				.min(idealWidth, bounds.width()) * Math.min(idealHeight, bounds.height())) {
+			bounds = idealBounds;
+		}
+
+		int xMin = bounds.left() + MARGIN;
+		int xMax = bounds.right() - MARGIN;
+		int yMin = bounds.top() + MARGIN;
+		int yMax = bounds.bottom() - MARGIN;
+		int xSpan = xMax - xMin;
+		int ySpan = yMax - yMin;
+		int tw = Math.max(0, Math.min(xSpan / ENTRY_SIZE, MAX_COLUMNS));
+		int th = Math.max(0, Math.min((ySpan - HEADER_OFFSET) / ENTRY_SIZE, MAX_ROWS));
+		int tx = xMax - tw * ENTRY_SIZE; // align RIGHT
+		int ty = yMin + HEADER_OFFSET; // align TOP
+		space = new ScreenSpace(tx, ty, tw, th, true, exclusion);
+		wrapPage();
+	}
+
+	/**
+	 * The original's exclusion-driven bounds shrinking, specialized to the right panel's alignment
+	 * (RIGHT/TOP). With no exclusion areas registered this is a no-op.
+	 */
+	private static Bounds constrainBounds(List<Bounds> exclusion, Bounds bounds) {
+		for (int i = 0; i < exclusion.size(); i++) {
+			Bounds overlap = exclusion.get(i).overlap(bounds);
+			if (!overlap.empty() && !bounds.empty()) {
+				if (overlap.top() < bounds.top() + ENTRY_SIZE + HEADER_OFFSET || overlap.width() >= bounds.width() * 2 / 3
+						|| overlap.height() >= bounds.height() / 3) {
+					int widthFactor = overlap.width() * 10 / bounds.width();
+					int heightFactor = overlap.height() * 10 / bounds.height();
+					if (heightFactor < widthFactor) {
+						int cy = bounds.y() + bounds.height() / 2 - bounds.height() / 4; // align.vertical = TOP
+						int ocy = overlap.y() + overlap.height() / 2;
+						if (cy < ocy) {
+							bounds = new Bounds(bounds.x(), bounds.y(), bounds.width(), overlap.top() - bounds.top());
+						} else {
+							bounds = new Bounds(bounds.x(), overlap.bottom(), bounds.width(),
+									bounds.bottom() - overlap.bottom());
+						}
+					} else {
+						int cx = bounds.x() + bounds.width() / 2 + bounds.width() / 4; // align.horizontal = RIGHT
+						int ocx = overlap.x() + overlap.width() / 2;
+						if (cx < ocx) {
+							bounds = new Bounds(bounds.x(), bounds.y(), overlap.left() - bounds.left(), bounds.height());
+						} else {
+							bounds = new Bounds(overlap.right(), bounds.y(), bounds.right() - overlap.right(),
+									bounds.height());
+						}
+					}
+				}
+			}
+		}
+		return bounds;
 	}
 
 	public static void render(GuiGraphicsExtractor graphics, Screen screen, int leftPos, int topPos,
 			int imageWidth, int imageHeight, int mouseX, int mouseY, float delta) {
-		layout(leftPos, topPos, imageWidth, imageHeight);
+		Minecraft client = client();
+		int screenWidth = client.getWindow().getGuiScaledWidth();
+		int screenHeight = client.getWindow().getGuiScaledHeight();
+		recalculate(leftPos + imageWidth);
 		// Drop search focus when the screen changes, so the EMI search never swallows input meant for a
 		// different screen (e.g. a vanilla anvil/sign rename field).
 		if (screen != lastScreen) {
@@ -180,77 +282,99 @@ public class EmiScreenManager {
 				search.setFocused(false);
 			}
 		}
-		if (pageSize <= 0) {
-			return;
-		}
 		EmiDrawContext context = EmiDrawContext.wrap(graphics);
-		List<? extends EmiIngredient> stacks = stacks();
-		int start = page * pageSize;
 
-		// Search bar at the top of the panel.
-		int barWidth = columns * ENTRY_SIZE;
+		// Search bar at the bottom center of the screen (ui.center-search-bar = true).
 		if (search == null) {
-			search = new EditBox(client().font, gridX, 3, barWidth, 16, EmiPort.literal(""));
+			search = new EditBox(client.font, 0, 0, SEARCH_WIDTH, 18, EmiPort.literal(""));
 			search.setMaxLength(64);
 			search.setEditable(true);
 			search.setResponder(EmiSearch::search);
 		}
-		search.setX(gridX);
-		search.setY(3);
-		search.setWidth(barWidth);
+		search.setX((screenWidth - SEARCH_WIDTH) / 2);
+		search.setY(screenHeight - 21);
+		search.setWidth(SEARCH_WIDTH);
 		search.extractRenderState(graphics, mouseX, mouseY, delta);
 
-		// Grid of stacks.
-		for (int i = 0; i < pageSize && start + i < stacks.size(); i++) {
-			int cx = gridX + (i % columns) * ENTRY_SIZE;
-			int cy = gridY + (i / columns) * ENTRY_SIZE;
-			stacks.get(start + i).render(graphics, cx + 1, cy + 1, delta,
-				EmiIngredient.RENDER_ICON | EmiIngredient.RENDER_AMOUNT | EmiIngredient.RENDER_INGREDIENT);
+		if (space == null || space.pageSize <= 0) {
+			return;
 		}
+		List<? extends EmiIngredient> stacks = stacks();
+		int totalPages = totalPages();
+		wrapPage();
 
-		// Page indicator, below the grid.
-		context.drawTextWithShadow(EmiPort.literal((page + 1) + "/" + (maxPage() + 1)),
-			gridX, gridY + rows * ENTRY_SIZE + 2);
+		// Panel header: page-turn arrows, page count, scroll indicator.
+		pageLeft.x = space.tx;
+		pageLeft.y = space.ty - 18;
+		pageRight.x = space.tx + space.tw * ENTRY_SIZE - 16;
+		pageRight.y = pageLeft.y;
+		pageLeft.render(context, mouseX, mouseY, delta);
+		pageRight.render(context, mouseX, mouseY, delta);
+		drawHeader(context, totalPages);
 
-		// Hover highlight + tooltip.
+		// Hover highlight goes under the icons, as in the original.
 		EmiIngredient hovered = getStackAt(mouseX, mouseY);
 		if (hovered != null && !hovered.isEmpty()) {
-			int idx = indexAt(mouseX, mouseY);
-			int cx = gridX + (idx % columns) * ENTRY_SIZE;
-			int cy = gridY + (idx / columns) * ENTRY_SIZE;
-			context.fill(cx, cy, ENTRY_SIZE, ENTRY_SIZE, 0x80ffffff);
+			int off = space.getRawOffsetFromMouse(mouseX, mouseY);
+			context.fill(space.getRawX(off), space.getRawY(off), ENTRY_SIZE, ENTRY_SIZE, 0x80ffffff);
+		}
+
+		// Grid of stacks.
+		int i = page * space.pageSize;
+		outer: for (int yo = 0; yo < space.th; yo++) {
+			for (int xo = 0; xo < space.getWidth(yo); xo++) {
+				if (i >= stacks.size()) {
+					break outer;
+				}
+				int cx = space.getX(xo, yo);
+				int cy = space.getY(xo, yo);
+				stacks.get(i++).render(graphics, cx + 1, cy + 1, delta,
+					EmiIngredient.RENDER_ICON | EmiIngredient.RENDER_AMOUNT | EmiIngredient.RENDER_INGREDIENT);
+			}
+		}
+
+		// Hover tooltip.
+		if (hovered != null && !hovered.isEmpty()) {
 			List<ClientTooltipComponent> tip = hovered.getEmiStacks().get(0).getTooltip();
 			if (!tip.isEmpty()) {
-				graphics.tooltip(client().font, tip, mouseX, mouseY, DefaultTooltipPositioner.INSTANCE, null);
+				graphics.tooltip(client.font, tip, mouseX, mouseY, DefaultTooltipPositioner.INSTANCE, null);
 			}
 		}
 	}
 
-	/** The grid index under the mouse on the current page, or -1. */
-	private static int indexAt(int mouseX, int mouseY) {
-		if (pageSize <= 0 || mouseX < gridX || mouseY < gridY) {
-			return -1;
+	private static void drawHeader(EmiDrawContext context, int totalPages) {
+		Component text = EmiRenderHelper.getPageText(page + 1, totalPages, (space.tw - 3) * ENTRY_SIZE);
+		int x = space.tx + (space.tw * ENTRY_SIZE) / 2;
+		int maxLeft = (space.tw - 2) * ENTRY_SIZE / 2 - ENTRY_SIZE;
+		int w = client().font.width(text) / 2;
+		if (w > maxLeft) {
+			x += (w - maxLeft);
 		}
-		int col = (mouseX - gridX) / ENTRY_SIZE;
-		int row = (mouseY - gridY) / ENTRY_SIZE;
-		if (col < 0 || col >= columns || row < 0 || row >= rows) {
-			return -1;
+		context.drawText(text, x - client().font.width(text) / 2, space.ty - 15, -1);
+		if (totalPages > 1 && space.tw > 2) {
+			int scrollLeft = space.tx + 18;
+			int scrollWidth = space.tw * ENTRY_SIZE - 36;
+			int scrollY = space.ty - 4;
+			context.fill(scrollLeft, scrollY, scrollWidth, 2, 0x55555555);
+			EmiRenderHelper.drawScroll(context, scrollLeft, scrollY, scrollWidth, 2, page, totalPages, 0xFFFFFFFF);
 		}
-		return row * columns + col;
 	}
 
 	public static boolean isInPanel(int mouseX, int mouseY) {
-		return indexAt(mouseX, mouseY) != -1;
+		return space != null && space.contains(mouseX, mouseY);
 	}
 
 	/** The ingredient under the mouse, or null. */
 	public static EmiIngredient getStackAt(int mouseX, int mouseY) {
-		int idx = indexAt(mouseX, mouseY);
-		if (idx < 0) {
+		if (space == null || space.pageSize <= 0) {
+			return null;
+		}
+		int off = space.getRawOffsetFromMouse(mouseX, mouseY);
+		if (off < 0) {
 			return null;
 		}
 		List<? extends EmiIngredient> stacks = stacks();
-		int abs = page * pageSize + idx;
+		int abs = page * space.pageSize + off;
 		if (abs >= 0 && abs < stacks.size()) {
 			return stacks.get(abs);
 		}
@@ -259,5 +383,107 @@ public class EmiScreenManager {
 
 	private static Minecraft client() {
 		return Minecraft.getInstance();
+	}
+
+	/**
+	 * A laid-out grid region — the original's {@code ScreenSpace} for a single panel: per-row usable
+	 * widths against exclusion areas, right-to-left row filling for the right sidebar.
+	 */
+	public static class ScreenSpace {
+		public final int tx, ty, tw, th;
+		public final int pageSize;
+		public final boolean rtl;
+		public final int[] widths;
+
+		public ScreenSpace(int tx, int ty, int tw, int th, boolean rtl, List<Bounds> exclusion) {
+			this.tx = tx;
+			this.ty = ty;
+			this.tw = tw;
+			this.th = th;
+			this.rtl = rtl;
+			int[] widths = new int[th];
+			int pageSize = 0;
+			for (int y = 0; y < th; y++) {
+				int width = 0;
+				int cy = ty + y * ENTRY_SIZE;
+				outer: for (int x = 0; x < tw; x++) {
+					int cx = tx + (rtl ? (tw - 1 - x) : x) * ENTRY_SIZE;
+					int rx = cx + ENTRY_SIZE - 1;
+					int ry = cy + ENTRY_SIZE - 1;
+					for (Bounds rect : exclusion) {
+						if (rect.contains(cx, cy) || rect.contains(rx, cy) || rect.contains(cx, ry)
+								|| rect.contains(rx, ry)) {
+							break outer;
+						}
+					}
+					width++;
+				}
+				widths[y] = width;
+				pageSize += width;
+			}
+			this.pageSize = pageSize;
+			this.widths = widths;
+		}
+
+		public int getWidth(int y) {
+			return widths[y];
+		}
+
+		public int getX(int x, int y) {
+			return tx + (rtl ? x + tw - getWidth(y) : x) * ENTRY_SIZE;
+		}
+
+		public int getY(int x, int y) {
+			return ty + y * ENTRY_SIZE;
+		}
+
+		public int getRawX(int off) {
+			int t = 0;
+			int y = 0;
+			while (y < th && t + getWidth(y) <= off) {
+				t += getWidth(y++);
+			}
+			return getX(off - t, y);
+		}
+
+		public int getRawY(int off) {
+			int t = 0;
+			int y = 0;
+			while (y < th && t + getWidth(y) <= off) {
+				t += getWidth(y++);
+			}
+			return ty + y * ENTRY_SIZE;
+		}
+
+		public int getRawOffsetFromMouse(int mouseX, int mouseY) {
+			if (mouseX < tx || mouseY < ty) {
+				return -1;
+			}
+			return getRawOffset((mouseX - tx) / ENTRY_SIZE, (mouseY - ty) / ENTRY_SIZE);
+		}
+
+		public int getRawOffset(int x, int y) {
+			if (x >= 0 && y >= 0 && x < tw && y < th) {
+				int off = 0;
+				for (int i = 0; i < y; i++) {
+					off += widths[i];
+				}
+				if (rtl) {
+					int to = tw - widths[y];
+					if (x >= to) {
+						return off + x - to;
+					}
+				} else {
+					if (x < widths[y]) {
+						return off + x;
+					}
+				}
+			}
+			return -1;
+		}
+
+		public boolean contains(int x, int y) {
+			return x >= tx && x < tx + tw * ENTRY_SIZE && y >= ty && y < ty + th * ENTRY_SIZE;
+		}
 	}
 }
