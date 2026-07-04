@@ -2,6 +2,8 @@ package dev.emi.emi.platform;
 
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.material.Fluid;
 
 /**
@@ -50,4 +52,11 @@ public abstract class EmiAgnos {
 	}
 
 	protected abstract String getModNameAgnos(String namespace);
+
+	/** Whether the player's client declared the given EMI channel (i.e. has EMI installed). */
+	public static boolean canSendToPlayer(ServerPlayer player, CustomPacketPayload.Type<?> type) {
+		return delegate != null && delegate.canSendToPlayerAgnos(player, type);
+	}
+
+	protected abstract boolean canSendToPlayerAgnos(ServerPlayer player, CustomPacketPayload.Type<?> type);
 }

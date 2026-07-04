@@ -3,12 +3,15 @@ package dev.emi.emi.platform.fabric;
 import java.util.Optional;
 
 import dev.emi.emi.platform.EmiAgnos;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidVariant;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidVariantAttributes;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.material.Fluid;
 
 public class EmiAgnosFabric extends EmiAgnos {
@@ -49,5 +52,10 @@ public class EmiAgnosFabric extends EmiAgnos {
 			return container.get().getMetadata().getName();
 		}
 		return namespace;
+	}
+
+	@Override
+	protected boolean canSendToPlayerAgnos(ServerPlayer player, CustomPacketPayload.Type<?> type) {
+		return ServerPlayNetworking.canSend(player, type);
 	}
 }

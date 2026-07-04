@@ -1,5 +1,6 @@
 package dev.emi.emi.platform.neoforge;
 
+import dev.emi.emi.network.EmiNetwork;
 import dev.emi.emi.platform.EmiClient;
 import dev.emi.emi.runtime.EmiReload;
 import net.minecraft.client.Minecraft;
@@ -9,6 +10,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.neoforged.neoforge.common.NeoForge;
 
 @EventBusSubscriber(modid = "emi", value = Dist.CLIENT)
@@ -18,8 +20,19 @@ public class EmiClientNeoForge {
 	@SubscribeEvent
 	public static void clientInit(FMLClientSetupEvent event) {
 		EmiClient.init();
+		EmiNetwork.initClient(packet -> {
+			var connection = Minecraft.getInstance().getConnection();
+			if (connection != null && connection.hasChannel(packet.type())) {
+				ClientPacketDistributor.sendToServer(packet);
+			}
+		});
 		NeoForge.EVENT_BUS.addListener(EmiClientNeoForge::onLogin);
 		NeoForge.EVENT_BUS.addListener(EmiClientNeoForge::onClientTick);
+		NeoForge.EVENT_BUS.addListener(EmiClientNeoForge::onLogout);
+	}
+
+	private static void onLogout(ClientPlayerNetworkEvent.LoggingOut event) {
+		EmiClient.onDisconnect();
 	}
 
 	// NeoForge fires LoggingIn from inside the login-packet handler, where Minecraft.getInstance() is

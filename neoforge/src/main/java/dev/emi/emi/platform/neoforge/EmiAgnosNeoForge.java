@@ -5,6 +5,8 @@ import java.util.Optional;
 import dev.emi.emi.platform.EmiAgnos;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.material.Fluid;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.ModList;
@@ -48,5 +50,10 @@ public class EmiAgnosNeoForge extends EmiAgnos {
 			return container.get().getModInfo().getDisplayName();
 		}
 		return namespace;
+	}
+
+	@Override
+	protected boolean canSendToPlayerAgnos(ServerPlayer player, CustomPacketPayload.Type<?> type) {
+		return player.connection.hasChannel(type);
 	}
 }
