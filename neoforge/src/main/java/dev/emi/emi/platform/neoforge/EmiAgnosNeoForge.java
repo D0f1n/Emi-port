@@ -2,7 +2,12 @@ package dev.emi.emi.platform.neoforge;
 
 import java.util.Optional;
 
+import dev.emi.emi.EmiRenderHelper;
+import dev.emi.emi.api.stack.FluidEmiStack;
 import dev.emi.emi.platform.EmiAgnos;
+import dev.emi.emi.runtime.EmiDrawContext;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -31,6 +36,25 @@ public class EmiAgnosNeoForge extends EmiAgnos {
 	@Override
 	protected Component getFluidNameAgnos(Fluid fluid, DataComponentPatch componentChanges) {
 		return new FluidStack(fluid, 1000, componentChanges).getHoverName();
+	}
+
+	@Override
+	protected boolean isFloatyFluidAgnos(FluidEmiStack stack) {
+		return ((Fluid) stack.getKey()).getFluidType().isLighterThanAir();
+	}
+
+	@Override
+	protected void renderFluidAgnos(FluidEmiStack stack, GuiGraphicsExtractor draw, int x, int y, float delta,
+			int xOff, int yOff, int width, int height) {
+		Fluid fluid = (Fluid) stack.getKey();
+		TextureAtlasSprite sprite = EmiRenderHelper.getFluidStillSprite(fluid);
+		if (sprite == null) {
+			return;
+		}
+		// IClientFluidTypeExtensions lost getStillTexture/getTintColor on 26.2; both the sprite and
+		// the tint come from the vanilla fluid model.
+		int color = EmiRenderHelper.getFluidTint(fluid);
+		EmiRenderHelper.drawTintedSprite(EmiDrawContext.wrap(draw), sprite, color, x, y, xOff, yOff, width, height);
 	}
 
 	@Override

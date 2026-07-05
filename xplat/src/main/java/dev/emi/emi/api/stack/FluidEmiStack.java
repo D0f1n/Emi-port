@@ -63,9 +63,10 @@ public class FluidEmiStack extends EmiStack {
 
 	@Override
 	public void render(GuiGraphicsExtractor draw, int x, int y, float delta, int flags) {
-		// TODO(render): loader-specific fluid sprite rendering (the original EmiAgnos.renderFluid). The
-		// sprite-atlas access path was rewritten on 26.2; the debug harness proves the item icon path, so
-		// the fluid icon is left as a no-op and returns with the screen round.
+		if ((flags & RENDER_ICON) != 0) {
+			// The original pushed the icon 100 units forward; the two-phase 26.2 context has no Z axis.
+			EmiAgnos.renderFluid(this, draw, x, y, delta);
+		}
 		if ((flags & RENDER_REMAINDER) != 0) {
 			EmiRender.renderRemainderIcon(this, draw, x, y);
 		}

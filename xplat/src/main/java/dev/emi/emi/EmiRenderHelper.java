@@ -3,14 +3,21 @@ package dev.emi.emi;
 import java.text.DecimalFormat;
 import java.util.List;
 
+import org.jetbrains.annotations.Nullable;
+
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.runtime.EmiDrawContext;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.block.FluidModel;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.Fluid;
 
 /**
  * The EMI render helper: the small widget-overlay drawers used by the stack render methods (amount
@@ -24,6 +31,59 @@ public class EmiRenderHelper {
 	public static final Identifier WIDGETS = EmiPort.id("emi", "textures/gui/widgets.png");
 	public static final Identifier BUTTONS = EmiPort.id("emi", "textures/gui/buttons.png");
 	public static final Identifier BACKGROUND = EmiPort.id("emi", "textures/gui/background.png");
+
+	/**
+	 * The fluid model vanilla baked for the given fluid. On 26.2 fluid sprites and tint live in the
+	 * vanilla {@code FluidStateModelSet} on both loaders (the loader-specific sprite getters —
+	 * Fabric's {@code FluidVariantRendering.getSprites} and NeoForge's
+	 * {@code IClientFluidTypeExtensions.getStillTexture} — were removed).
+	 */
+	public static @Nullable FluidModel getFluidModel(Fluid fluid) {
+		return CLIENT.getModelManager().getFluidStateModelSet().get(fluid.defaultFluidState());
+	}
+
+	public static @Nullable TextureAtlasSprite getFluidStillSprite(Fluid fluid) {
+		FluidModel model = getFluidModel(fluid);
+		return model == null ? null : model.stillMaterial().sprite();
+	}
+
+	/**
+	 * The tint of a fluid from its vanilla model. Untinted fluids (lava) have a null tint source; for
+	 * tinted ones the context-free {@code color(state)} is white for biome-tinted fluids (water), so
+	 * prefer the in-world color at the player when a world is loaded.
+	 */
+	public static int getFluidTint(Fluid fluid) {
+		FluidModel model = getFluidModel(fluid);
+		if (model == null || model.tintSource() == null) {
+			return -1;
+		}
+		BlockState state = fluid.defaultFluidState().createLegacyBlock();
+		if (CLIENT.level != null && CLIENT.player != null) {
+			return model.tintSource().colorInWorld(state, CLIENT.level, CLIENT.player.blockPosition());
+		}
+		return model.tintSource().color(state);
+	}
+
+	/**
+	 * Draws a {@code width}x{@code height} region of a 16x16 sprite starting at texel
+	 * ({@code xOff}, {@code yOff}), tinted by {@code color} (alpha forced opaque) — the original
+	 * {@code drawTintedSprite}. The old path built a custom position-color-texture buffer; on 26.2
+	 * partial regions draw the full sprite shifted and scissor-clipped instead of recomputing UVs.
+	 */
+	public static void drawTintedSprite(EmiDrawContext context, TextureAtlasSprite sprite, int color,
+			int x, int y, int xOff, int yOff, int width, int height) {
+		if (sprite == null) {
+			return;
+		}
+		color |= 0xFF000000;
+		if (xOff == 0 && yOff == 0 && width == 16 && height == 16) {
+			context.raw().blitSprite(RenderPipelines.GUI_TEXTURED, sprite, x, y, 16, 16, color);
+		} else {
+			context.raw().enableScissor(x, y, x + width, y + height);
+			context.raw().blitSprite(RenderPipelines.GUI_TEXTURED, sprite, x - xOff, y - yOff, 16, 16, color);
+			context.raw().disableScissor();
+		}
+	}
 
 	public static void renderAmount(EmiDrawContext context, int x, int y, Component amount) {
 		int tx = x + 17 - Math.min(14, CLIENT.font.width(amount));

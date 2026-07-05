@@ -2,12 +2,18 @@ package dev.emi.emi.platform.fabric;
 
 import java.util.Optional;
 
+import dev.emi.emi.EmiRenderHelper;
+import dev.emi.emi.api.stack.FluidEmiStack;
 import dev.emi.emi.platform.EmiAgnos;
+import dev.emi.emi.runtime.EmiDrawContext;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.fabricmc.fabric.api.transfer.v1.client.fluid.FluidVariantRendering;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidVariant;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidVariantAttributes;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -33,6 +39,26 @@ public class EmiAgnosFabric extends EmiAgnos {
 	@Override
 	protected Component getFluidNameAgnos(Fluid fluid, DataComponentPatch componentChanges) {
 		return FluidVariantAttributes.getName(FluidVariant.of(fluid, componentChanges));
+	}
+
+	@Override
+	protected boolean isFloatyFluidAgnos(FluidEmiStack stack) {
+		FluidVariant fluid = FluidVariant.of((Fluid) stack.getKey(), stack.getComponentChanges());
+		return FluidVariantAttributes.isLighterThanAir(fluid);
+	}
+
+	@Override
+	protected void renderFluidAgnos(FluidEmiStack stack, GuiGraphicsExtractor draw, int x, int y, float delta,
+			int xOff, int yOff, int width, int height) {
+		Fluid fluid = (Fluid) stack.getKey();
+		TextureAtlasSprite sprite = EmiRenderHelper.getFluidStillSprite(fluid);
+		if (sprite == null) {
+			return;
+		}
+		// FluidVariantRendering.getSprites is gone on 26.2 (the sprite is vanilla now), but the color
+		// handlers survived and honor modded fluid tints.
+		int color = FluidVariantRendering.getColor(FluidVariant.of(fluid, stack.getComponentChanges()));
+		EmiRenderHelper.drawTintedSprite(EmiDrawContext.wrap(draw), sprite, color, x, y, xOff, yOff, width, height);
 	}
 
 	@Override

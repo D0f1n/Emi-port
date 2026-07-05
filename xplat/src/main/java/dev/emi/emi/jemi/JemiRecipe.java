@@ -24,6 +24,7 @@ import dev.emi.emi.jemi.impl.JemiTooltipBuilder;
 import dev.emi.emi.jemi.impl.extras.JemiRecipeExtrasBuilder;
 import dev.emi.emi.jemi.impl.extras.JemiWidgetBuilder;
 import dev.emi.emi.jemi.widget.JemiSlotWidget;
+import dev.emi.emi.jemi.widget.JemiTankWidget;
 import dev.emi.emi.runtime.EmiDrawContext;
 import dev.emi.emi.runtime.EmiLog;
 import mezz.jei.api.gui.IRecipeLayoutDrawable;
@@ -135,9 +136,11 @@ public class JemiRecipe<T> implements EmiRecipe {
 			widgets.add(new JemiWidget(0, 0, getDisplayWidth(), getDisplayHeight(), opt.get()));
 			for (JemiRecipeSlotBuilder sb : builder.slots) {
 				JemiRecipeSlot slot = new JemiRecipeSlot(sb);
-				// TODO(polish): the original rendered fluid-configured slots through a TankWidget;
-				// the port has no TankWidget yet, so fluids render as regular slots.
-				widgets.add(new JemiSlotWidget(slot, this));
+				if (slot.tankInfo != null) {
+					widgets.add(new JemiTankWidget(slot, this));
+				} else {
+					widgets.add(new JemiSlotWidget(slot, this));
+				}
 			}
 		}
 		try {
