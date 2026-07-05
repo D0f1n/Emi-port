@@ -1,0 +1,22 @@
+package dev.emi.emi.jemi.impl.extras;
+
+import dev.emi.emi.api.widget.WidgetHolder;
+
+/** A deferred EMI widget: extras record these, {@code JemiRecipe} materializes them per display. */
+public class JemiWidgetBuilder extends JemiPlaceable<JemiWidgetBuilder> {
+	public final WidgetConstructor constructor;
+
+	public JemiWidgetBuilder(int width, int height, WidgetConstructor constructor) {
+		super(width, height);
+		this.constructor = constructor;
+	}
+
+	public void addWidgets(WidgetHolder holder) {
+		constructor.accept(this, holder);
+	}
+
+	public interface WidgetConstructor {
+
+		void accept(JemiWidgetBuilder builder, WidgetHolder holder);
+	}
+}

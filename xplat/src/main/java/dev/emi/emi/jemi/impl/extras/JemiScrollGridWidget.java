@@ -1,0 +1,58 @@
+package dev.emi.emi.jemi.impl.extras;
+
+import java.util.List;
+import java.util.Optional;
+
+import mezz.jei.api.gui.ingredient.IRecipeSlotDrawable;
+import mezz.jei.api.gui.inputs.RecipeSlotUnderMouse;
+import mezz.jei.api.gui.widgets.IScrollGridWidget;
+import net.minecraft.client.gui.navigation.ScreenPosition;
+import net.minecraft.client.gui.navigation.ScreenRectangle;
+
+/** TODO(polish): scroll grids are recorded but not rendered (matches the 1.21.1 bridge). */
+public class JemiScrollGridWidget implements IScrollGridWidget {
+	private static final int SCROLL_BAR_WIDTH = 18;
+	public final List<IRecipeSlotDrawable> slots;
+	public int x, y;
+	public int width, height;
+
+	public JemiScrollGridWidget(List<IRecipeSlotDrawable> slots, int x, int y, int columns, int visibleRows) {
+		this.slots = slots;
+		this.x = x;
+		this.y = y;
+		this.width = columns * 18 + SCROLL_BAR_WIDTH;
+		this.height = visibleRows * 18;
+	}
+
+	@Override
+	public ScreenPosition getPosition() {
+		return new ScreenPosition(x, y);
+	}
+
+	@Override
+	public ScreenRectangle getScreenRectangle() {
+		return new ScreenRectangle(x, y, width, height);
+	}
+
+	@Override
+	public Optional<RecipeSlotUnderMouse> getSlotUnderMouse(double mouseX, double mouseY) {
+		return Optional.empty();
+	}
+
+	@Override
+	public IScrollGridWidget setPosition(int xPos, int yPos) {
+		this.x = xPos;
+		this.y = yPos;
+		return this;
+	}
+
+	@Override
+	public int getWidth() {
+		return width;
+	}
+
+	@Override
+	public int getHeight() {
+		return height;
+	}
+}
