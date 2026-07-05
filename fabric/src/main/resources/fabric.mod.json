@@ -16,6 +16,9 @@
     ],
     "client": [
       "dev.emi.emi.platform.fabric.EmiClientFabric"
+    ],
+    "jei_mod_plugin": [
+      "dev.emi.emi.jemi.JemiPlugin"
     ]
   },
   "mixins": [

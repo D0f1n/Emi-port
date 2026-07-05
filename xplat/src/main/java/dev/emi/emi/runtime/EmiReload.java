@@ -3,8 +3,12 @@ package dev.emi.emi.runtime;
 import java.util.List;
 import java.util.function.Consumer;
 
+import com.google.common.collect.Lists;
+
 import dev.emi.emi.EmiPort;
 import dev.emi.emi.VanillaPlugin;
+import dev.emi.emi.jemi.JemiPlugin;
+import dev.emi.emi.platform.EmiAgnos;
 import dev.emi.emi.api.EmiPlugin;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.EmiRecipeCategory;
@@ -39,17 +43,37 @@ import net.minecraft.world.level.material.Fluid;
  * returns in later rounds.
  */
 public class EmiReload {
-	// Plugin discovery via loader entrypoints returns with the jemi round; for now the built-in
-	// vanilla plugin is the only one.
-	private static final List<EmiPlugin> PLUGINS = List.of(new VanillaPlugin());
+	// Plugin discovery via loader entrypoints returns with a later round; the built-in vanilla
+	// plugin plus (when JEI is installed) the jemi bridge.
+	private static List<EmiPlugin> plugins() {
+		List<EmiPlugin> plugins = Lists.newArrayList(new VanillaPlugin());
+		if (EmiAgnos.isModLoaded("jei")) {
+			// JemiPlugin may only be classloaded behind this gate: it implements JEI interfaces.
+			plugins.add(new JemiPlugin());
+		}
+		return plugins;
+	}
 
 	private static boolean adaptersRegistered = false;
 	private static boolean serializersRegistered = false;
 	private static volatile boolean reloading = false;
 
-	/** Called from the loaders' client world-join events; defers the build onto the client thread. */
+	private static volatile boolean scheduled = false;
+
+	/**
+	 * Called from the loaders' client world-join events and from the jemi bridge when the JEI
+	 * runtime arrives; defers the build onto the client thread. Back-to-back requests (world join
+	 * racing JEI's own reload) coalesce into a single rebuild.
+	 */
 	public static void scheduleReload() {
-		Minecraft.getInstance().execute(EmiReload::run);
+		if (scheduled) {
+			return;
+		}
+		scheduled = true;
+		Minecraft.getInstance().execute(() -> {
+			scheduled = false;
+			run();
+		});
 	}
 
 	public static void run() {
@@ -89,7 +113,7 @@ public class EmiReload {
 		EmiRecipeSource.clear();
 		EmiRecipeSource.harvest();
 		EmiRegistryImpl registry = new EmiRegistryImpl();
-		for (EmiPlugin plugin : PLUGINS) {
+		for (EmiPlugin plugin : plugins()) {
 			try {
 				plugin.register(registry);
 			} catch (Throwable t) {
