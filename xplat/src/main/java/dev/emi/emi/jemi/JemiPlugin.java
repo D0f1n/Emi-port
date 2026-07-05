@@ -10,14 +10,17 @@ import com.google.common.collect.Maps;
 import dev.emi.emi.EmiPort;
 import dev.emi.emi.api.EmiPlugin;
 import dev.emi.emi.api.EmiRegistry;
+import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.EmiRecipeCategory;
 import dev.emi.emi.api.recipe.VanillaEmiRecipeCategories;
+import dev.emi.emi.api.recipe.handler.EmiRecipeHandler;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.jemi.runtime.JemiBookmarkOverlay;
 import dev.emi.emi.jemi.runtime.JemiIngredientFilter;
 import dev.emi.emi.jemi.runtime.JemiIngredientListOverlay;
 import dev.emi.emi.jemi.runtime.JemiRecipesGui;
 import dev.emi.emi.registry.EmiIngredientSerializers;
+import dev.emi.emi.registry.EmiRecipeFiller;
 import dev.emi.emi.registry.EmiRecipes;
 import dev.emi.emi.runtime.EmiLog;
 import dev.emi.emi.runtime.EmiReload;
@@ -29,6 +32,7 @@ import mezz.jei.api.recipe.types.IRecipeType;
 import mezz.jei.api.registration.IRuntimeRegistration;
 import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.inventory.AbstractContainerMenu;
 
 /**
  * The JEI bridge. Registered with JEI as a regular plugin (annotation scan on NeoForge, the
@@ -81,6 +85,7 @@ public class JemiPlugin implements IModPlugin, EmiPlugin {
 
 		EmiIngredientSerializers.BY_CLASS.put(JemiStack.class, new JemiStackSerializer(runtime.getIngredientManager()));
 		EmiIngredientSerializers.BY_TYPE.put("jemi", new JemiStackSerializer(runtime.getIngredientManager()));
+		EmiRecipeFiller.extraHandlers = JemiPlugin::getRecipeHandler;
 
 		// TODO(polish): the original also indexed custom JEI ingredient types into the EMI
 		// sidebar (addEmiStack), filtered hidden ingredients (removeEmiStacks + ingredient
@@ -135,6 +140,12 @@ public class JemiPlugin implements IModPlugin, EmiPlugin {
 					EmiLog.info("[JEMI] Skipping recipe category " + id + " because native EMI recipe category already exists");
 					continue;
 				}
+				List<?> recipes = runtime.getRecipeManager().createRecipeLookup(type).includeHidden().get().toList();
+				if (recipes.isEmpty() && catalysts.stream().allMatch(EmiStack::isEmpty)) {
+					// JEI categories whose recipes were filtered out (e.g. JEI's own vanilla
+					// plugin stages skipped by PluginCallerMixin) would show up empty.
+					continue;
+				}
 				EmiRecipeCategory category = new JemiCategory(c);
 				CATEGORY_MAP.put(category, c);
 				registry.addCategory(category);
@@ -143,7 +154,6 @@ public class JemiPlugin implements IModPlugin, EmiPlugin {
 						registry.addWorkstation(category, catalyst);
 					}
 				}
-				List<?> recipes = runtime.getRecipeManager().createRecipeLookup(type).includeHidden().get().toList();
 				int added = 0;
 				for (Object r : recipes) {
 					try {
@@ -164,5 +174,18 @@ public class JemiPlugin implements IModPlugin, EmiPlugin {
 		if (category != null) {
 			map.put(type, category);
 		}
+	}
+
+	@SuppressWarnings({"rawtypes", "unchecked"})
+	private static EmiRecipeHandler<?> getRecipeHandler(AbstractContainerMenu menu, EmiRecipe recipe) {
+		if (runtime == null) {
+			return null;
+		}
+		IRecipeCategory category = CATEGORY_MAP.getOrDefault(recipe.getCategory(), null);
+		if (category != null) {
+			return (EmiRecipeHandler<?>) runtime.getRecipeTransferManager().getRecipeTransferHandler(menu, category)
+				.map(h -> new JemiRecipeHandler((mezz.jei.api.recipe.transfer.IRecipeTransferHandler) h)).orElse(null);
+		}
+		return null;
 	}
 }

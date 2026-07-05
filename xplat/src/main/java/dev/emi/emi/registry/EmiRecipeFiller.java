@@ -2,6 +2,7 @@ package dev.emi.emi.registry;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiFunction;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -37,9 +38,12 @@ import net.minecraft.world.item.ItemStack;
  */
 public class EmiRecipeFiller {
 	public static Map<MenuType<?>, List<EmiRecipeHandler<?>>> handlers = Maps.newHashMap();
+	/** Fallback handler source for recipes without a registered handler; set by the jemi bridge. */
+	public static BiFunction<AbstractContainerMenu, EmiRecipe, @Nullable EmiRecipeHandler<?>> extraHandlers = (menu, recipe) -> null;
 
 	public static void clear() {
 		handlers.clear();
+		extraHandlers = (menu, recipe) -> null;
 	}
 
 	public static boolean isSupported(EmiRecipe recipe) {
@@ -56,6 +60,10 @@ public class EmiRecipeFiller {
 				if (handler.supportsRecipe(recipe)) {
 					return true;
 				}
+			}
+			EmiRecipeHandler<?> extra = extraHandlers.apply(hs.getMenu(), recipe);
+			if (extra != null && extra.supportsRecipe(recipe)) {
+				return true;
 			}
 		}
 		return false;
@@ -78,10 +86,17 @@ public class EmiRecipeFiller {
 		return List.of();
 	}
 
+	@SuppressWarnings("unchecked")
 	public static <T extends AbstractContainerMenu> @Nullable EmiRecipeHandler<T> getFirstValidHandler(EmiRecipe recipe, AbstractContainerScreen<T> screen) {
 		for (EmiRecipeHandler<T> handler : getAllHandlers(screen)) {
 			if (handler.supportsRecipe(recipe)) {
 				return handler;
+			}
+		}
+		if (screen != null) {
+			EmiRecipeHandler<?> extra = extraHandlers.apply(screen.getMenu(), recipe);
+			if (extra != null && extra.supportsRecipe(recipe)) {
+				return (EmiRecipeHandler<T>) extra;
 			}
 		}
 		return null;
