@@ -16,8 +16,11 @@ import dev.emi.emi.runtime.EmiTagKey;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 @ApiStatus.Internal
 public class TagEmiIngredient implements EmiIngredient {
@@ -25,6 +28,7 @@ public class TagEmiIngredient implements EmiIngredient {
 	private List<EmiStack> stacks;
 	public final TagKey<?> key;
 	private final EmiTagKey<?> tagKey;
+	private ItemStack modelStack;
 	private long amount;
 	private float chance = 1;
 
@@ -99,11 +103,16 @@ public class TagEmiIngredient implements EmiIngredient {
 	public void render(GuiGraphicsExtractor draw, int x, int y, float delta, int flags) {
 		EmiDrawContext context = EmiDrawContext.wrap(draw);
 		if ((flags & RENDER_ICON) != 0) {
-			// TODO(render): synthetic tag models via Model Loading API. The original rendered a custom
-			// baked model when one existed; that path used deleted APIs (BakedModel / renderBakedItemModel)
-			// and a rewritten Model Loading API, so it is deferred and hasCustomModel() stays false. The
-			// fallback renders the first matching stack's icon, which is what the round verifies.
-			if (!stacks.isEmpty()) {
+			if (tagKey.hasCustomModel()) {
+				// The original rendered the synthetic tag model directly (BakedModel — gone on 26.2).
+				// Here the model is a client item definition, so the ordinary item path renders it via
+				// a stack carrying the minecraft:item_model component.
+				if (modelStack == null) {
+					modelStack = new ItemStack(Items.STONE);
+					modelStack.set(DataComponents.ITEM_MODEL, tagKey.getCustomModel());
+				}
+				draw.item(modelStack, x, y);
+			} else if (!stacks.isEmpty()) {
 				stacks.get(0).render(draw, x, y, delta, -1 ^ RENDER_AMOUNT);
 			}
 		}

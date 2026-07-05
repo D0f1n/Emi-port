@@ -17,21 +17,29 @@ import dev.emi.emi.api.stack.TagEmiIngredient;
 import dev.emi.emi.platform.EmiAgnos;
 import dev.emi.emi.runtime.EmiTagKey;
 import dev.emi.emi.util.InheritanceMap;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.block.Block;
 
 /**
- * Tag resolution side of the Stage 3 layer. Synthetic tag-model registration (Model Loading API) is
- * deferred to the render round, and the config/hidden/datapack-exclusion filters from the original are
- * dropped for now (no out-of-scope subsystems).
+ * Tag resolution side of the Stage 3 layer. The config/hidden/datapack-exclusion filters from the
+ * original are dropped for now (no out-of-scope subsystems).
+ *
+ * <p>Synthetic tag icons: the original registered {@code models/tag/**} through the Model Loading
+ * API and rendered the baked models directly — both halves of that path are gone on 26.2. Instead
+ * the same tag models are shipped alongside client item definitions ({@code items/tag/**}), which
+ * vanilla loads for arbitrary ids by directory scan; {@link #MODELED_TAGS} maps tags to those item
+ * model ids and {@code TagEmiIngredient} renders them through the ordinary item path with the
+ * {@code minecraft:item_model} component.
  */
 public class EmiTags {
 	public static final InheritanceMap<EmiRegistryAdapter<?>> ADAPTERS_BY_CLASS = new InheritanceMap<>(Maps.newHashMap());
 	public static final Map<Registry<?>, EmiRegistryAdapter<?>> ADAPTERS_BY_REGISTRY = Maps.newHashMap();
 	public static final Identifier HIDDEN_FROM_RECIPE_VIEWERS = EmiPort.id("c", "hidden_from_recipe_viewers");
-	// Populated by the render round (synthetic tag icon models); kept empty here.
+	// Tag -> client item definition id ("<ns>:tag/<registry>/<path>") for tags with a synthetic icon.
 	public static final Map<TagKey<?>, Identifier> MODELED_TAGS = Maps.newHashMap();
 	private static final Map<Set<?>, List<EmiTagKey<?>>> CACHED_TAGS = Maps.newHashMap();
 	private static final Map<EmiTagKey<?>, List<?>> TAG_VALUES = Maps.newHashMap();
@@ -147,8 +155,32 @@ public class EmiTags {
 		SORTED_TAGS.clear();
 		TAG_VALUES.clear();
 		CACHED_TAGS.clear();
+		reloadTagModels();
 		for (Registry<?> registry : ADAPTERS_BY_REGISTRY.keySet()) {
 			reloadTags(registry);
+		}
+	}
+
+	/**
+	 * The 26.2 equivalent of the original {@code registerTagModels}: scans {@code items/tag/**} client
+	 * item definitions (resource packs can add their own, like the original's {@code models/tag/**})
+	 * and maps each to the tag it depicts. Path layout matches the original:
+	 * {@code items/tag/<registry>/<namespaced tag path>.json}.
+	 */
+	private static void reloadTagModels() {
+		MODELED_TAGS.clear();
+		Map<Identifier, ?> resources = Minecraft.getInstance().getResourceManager()
+			.listResources("items/tag", i -> i.getPath().endsWith(".json"));
+		for (Identifier id : resources.keySet()) {
+			String path = id.getPath();
+			// items/tag/item/ingots.json -> tag/item/ingots
+			path = path.substring(6, path.length() - 5);
+			String[] parts = path.split("/");
+			if (parts.length > 2) {
+				TagKey<?> key = TagKey.create(ResourceKey.createRegistryKey(EmiPort.id("minecraft", parts[1])),
+					EmiPort.id(id.getNamespace(), path.substring(5 + parts[1].length())));
+				MODELED_TAGS.put(key, EmiPort.id(id.getNamespace(), path));
+			}
 		}
 	}
 
