@@ -66,7 +66,7 @@ public interface StandardRecipeHandler<T extends AbstractContainerMenu> extends 
 	default boolean craft(EmiRecipe recipe, EmiCraftContext<T> context) {
 		List<ItemStack> stacks = EmiRecipeFiller.getStacks(this, recipe, context.getScreen(), context.getAmount());
 		if (stacks != null) {
-			Minecraft.getInstance().setScreenAndShow(context.getScreen());
+			Minecraft.getInstance().gui.setScreen(context.getScreen());
 			if (!EmiClient.onServer) {
 				return EmiRecipeFiller.clientFill(this, recipe, context.getScreen(), stacks, context.getDestination());
 			} else {

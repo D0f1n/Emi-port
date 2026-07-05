@@ -173,15 +173,15 @@ public class EmiApi {
 			.collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
 		if (!recipes.isEmpty()) {
 			if (getHandledScreen() == null) {
-				client.setScreenAndShow(new InventoryScreen(client.player));
+				client.gui.setScreen(new InventoryScreen(client.player));
 			}
 			if (client.gui.screen() instanceof AbstractContainerScreen<?> hs) {
 				push();
-				client.setScreenAndShow(new RecipeScreen(hs, recipes));
+				client.gui.setScreen(new RecipeScreen(hs, recipes));
 			} else if (client.gui.screen() instanceof RecipeScreen rs) {
 				push();
 				RecipeScreen n = new RecipeScreen(rs.old, recipes);
-				client.setScreenAndShow(n);
+				client.gui.setScreen(n);
 				n.focusCategory(rs.getFocusedCategory());
 			}
 		}

@@ -38,9 +38,9 @@ public class EmiHistory {
 		if (i >= 0) {
 			Screen popped = HISTORIES.remove(i);
 			FORWARD_HISTORIES.add(client.gui.screen());
-			client.setScreenAndShow(popped);
+			client.gui.setScreen(popped);
 		} else if (screen != null) {
-			client.setScreenAndShow(screen);
+			client.gui.setScreen(screen);
 		}
 	}
 
@@ -52,7 +52,7 @@ public class EmiHistory {
 				return;
 			}
 		}
-		client.setScreenAndShow(otherwise);
+		client.gui.setScreen(otherwise);
 	}
 
 	public static void forward() {
@@ -61,7 +61,7 @@ public class EmiHistory {
 		if (i >= 0 && client.gui.screen() != null) {
 			Screen popped = FORWARD_HISTORIES.remove(i);
 			HISTORIES.add(client.gui.screen());
-			client.setScreenAndShow(popped);
+			client.gui.setScreen(popped);
 		}
 	}
 
