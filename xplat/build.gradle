@@ -8,4 +8,8 @@ dependencies {
 	compileOnly "net.fabricmc:fabric-loader:${rootProject.fabric_loader_version}"
 	// MixinExtras is bundled by both loaders at runtime; compile-only here so mixins are ready to use it.
 	compileOnly "io.github.llamalad7:mixinextras-common:0.5.4"
+	// JEI is a soft dependency: the jemi bridge compiles against the API but only activates at
+	// runtime when JEI is installed. Fluid access goes through IPlatformFluidHelper, so the
+	// platform-specific JEI API jars are not needed here.
+	compileOnly("mezz.jei:jei-${rootProject.minecraft_version}-common-api:${rootProject.jei_version}") { transitive = false }
 }
