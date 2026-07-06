@@ -8,6 +8,7 @@ import dev.emi.emi.EmiRenderHelper;
 import dev.emi.emi.api.EmiApi;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.stack.EmiIngredient;
+import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.widget.Bounds;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiDrawContext;
@@ -47,6 +48,11 @@ public class EmiScreenManager {
 
 	/** The stacks currently shown (filtered by search); defaults to the whole index. */
 	public static List<? extends EmiIngredient> searchedStacks = List.of();
+
+	/** The stack the current mouse press started on; interactions resolve on release, as the original. */
+	public static EmiIngredient pressedStack = EmiStack.EMPTY;
+	/** The stack being dragged (set once the cursor leaves the pressed stack with the button held). */
+	public static EmiIngredient draggedStack = EmiStack.EMPTY;
 
 	/** Right sidebar: the searchable index, filled right-to-left like the original. */
 	private static final SidebarPanel indexPanel = new SidebarPanel(true, EmiScreenManager::stacks);
@@ -109,17 +115,77 @@ public class EmiScreenManager {
 		}
 		EmiIngredient stack = getStackAt(mx, my);
 		if (stack != null && !stack.isEmpty()) {
-			if (event.button() == 0) {
-				EmiApi.displayRecipes(stack);
-			} else if (event.button() == 1) {
-				EmiApi.displayUses(stack);
-			}
+			// Record the press; recipe/use lookup and favorites drops resolve in mouseReleased, so a
+			// drag can begin without triggering a lookup, as the original.
+			pressedStack = stack;
 			return true;
 		}
 		if (search != null) {
 			search.setFocused(false);
 		}
 		return false;
+	}
+
+	public static boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+		if (draggedStack.isEmpty() && button == 0 && !pressedStack.isEmpty()) {
+			if (client().gui.screen() instanceof AbstractContainerScreen<?> hs
+					&& !hs.getMenu().getCarried().isEmpty()) {
+				return false;
+			}
+			EmiIngredient hovered = getStackAt((int) mouseX, (int) mouseY);
+			if (hovered != pressedStack) {
+				draggedStack = pressedStack;
+			}
+		}
+		return false;
+	}
+
+	/** Begins a drag from an external source (a recipe screen slot). */
+	public static void startDrag(EmiIngredient stack) {
+		pressedStack = stack;
+		draggedStack = stack;
+	}
+
+	public static boolean mouseReleased(double mouseX, double mouseY, int button) {
+		try {
+			int mx = (int) mouseX;
+			int my = (int) mouseY;
+			if (!pressedStack.isEmpty()) {
+				if (!draggedStack.isEmpty()) {
+					SidebarPanel panel = getHoveredPanel(mx, my);
+					if (panel == favoritesPanel && panel.space != null) {
+						ScreenSpace space = panel.space;
+						int page = panel.page;
+						int pageSize = space.pageSize;
+						int index = Math.min(space.getClosestEdge(mx, my), EmiFavorites.favorites.size());
+						if (index + pageSize * page > EmiFavorites.favorites.size()) {
+							index = EmiFavorites.favorites.size() - pageSize * page;
+						}
+						if (index >= 0) {
+							EmiFavorites.addFavoriteAt(draggedStack, index + pageSize * page);
+							panel.wrapPage();
+						}
+						return true;
+					}
+					// The original forwards drops elsewhere to plugin drag-drop handlers. TODO(polish)
+				} else {
+					EmiIngredient stack = getStackAt(mx, my);
+					if (stack != null && !stack.isEmpty()) {
+						if (button == 0) {
+							EmiApi.displayRecipes(stack);
+							return true;
+						} else if (button == 1) {
+							EmiApi.displayUses(stack);
+							return true;
+						}
+					}
+				}
+			}
+			return false;
+		} finally {
+			pressedStack = EmiStack.EMPTY;
+			draggedStack = EmiStack.EMPTY;
+		}
 	}
 
 	public static boolean mouseScrolled(double mouseX, double mouseY, double verticalAmount) {
@@ -325,6 +391,8 @@ public class EmiScreenManager {
 			panel.render(context, graphics, mouseX, mouseY, delta);
 		}
 
+		renderDraggedStack(context, graphics, mouseX, mouseY, delta);
+
 		// Hover tooltip.
 		if (hovered != null && !hovered.isEmpty()) {
 			List<ClientTooltipComponent> tip = hovered.getEmiStacks().get(0).getTooltip();
@@ -332,6 +400,33 @@ public class EmiScreenManager {
 				graphics.tooltip(client.font, tip, mouseX, mouseY, DefaultTooltipPositioner.INSTANCE, null);
 			}
 		}
+	}
+
+	/** The dragged stack under the cursor plus the favorites-panel insertion caret, as the original. */
+	private static void renderDraggedStack(EmiDrawContext context, GuiGraphicsExtractor graphics,
+			int mouseX, int mouseY, float delta) {
+		if (draggedStack.isEmpty()) {
+			return;
+		}
+		SidebarPanel panel = getHoveredPanel(mouseX, mouseY);
+		if (panel == favoritesPanel && panel.space != null) {
+			ScreenSpace space = panel.space;
+			int pageSize = space.pageSize;
+			int page = panel.page;
+			int index = space.getClosestEdge(mouseX, mouseY);
+			if (index + pageSize * page > EmiFavorites.favorites.size()) {
+				index = EmiFavorites.favorites.size() - pageSize * page;
+			}
+			if (index + pageSize * page > EmiFavorites.favoriteSidebar.size()) {
+				index = EmiFavorites.favoriteSidebar.size() - pageSize * page;
+			}
+			if (index >= 0) {
+				int dx = space.getEdgeX(index);
+				int dy = space.getEdgeY(index);
+				context.fill(dx - 1, dy, 2, 18, 0xFF00FFFF);
+			}
+		}
+		draggedStack.render(graphics, mouseX - 8, mouseY - 8, delta, EmiIngredient.RENDER_ICON);
 	}
 
 	private static SidebarPanel getHoveredPanel(int mouseX, int mouseY) {
@@ -532,6 +627,57 @@ public class EmiScreenManager {
 
 		public int getY(int x, int y) {
 			return ty + y * ENTRY_SIZE;
+		}
+
+		public int getEdgeX(int off) {
+			int t = 0;
+			int y = 0;
+			while (y < th && t + getWidth(y) < off) {
+				t += getWidth(y++);
+			}
+			return getX(off - t, y);
+		}
+
+		public int getEdgeY(int off) {
+			int t = 0;
+			int y = 0;
+			while (y < th && t + getWidth(y) < off) {
+				t += getWidth(y++);
+			}
+			return ty + y * ENTRY_SIZE;
+		}
+
+		public int getClosestEdge(int x, int y) {
+			if (y < ty) {
+				return 0;
+			} else if (y >= ty + th * ENTRY_SIZE) {
+				return pageSize;
+			} else {
+				x = (x - tx) / ENTRY_SIZE;
+				y = (y - ty) / ENTRY_SIZE;
+				int off = 0;
+				for (int i = 0; i < y; i++) {
+					off += widths[i];
+				}
+				if (x < 0) {
+					return y;
+				} else if (x >= widths[y]) {
+					return y + widths[y];
+				}
+				if (rtl) {
+					int to = tw - widths[y];
+					if (x >= to) {
+						off += x - to;
+					}
+				} else {
+					if (x < widths[y]) {
+						off += x;
+					} else {
+						off += widths[y];
+					}
+				}
+				return off;
+			}
 		}
 
 		public int getRawX(int off) {

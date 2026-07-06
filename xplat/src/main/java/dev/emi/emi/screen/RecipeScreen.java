@@ -436,7 +436,29 @@ public class RecipeScreen extends Screen {
 	}
 
 	@Override
+	public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
+		// A press on a recipe slot becomes a drag source once the cursor leaves the slot bounds.
+		if (pressedSlot instanceof SlotWidget slot && event.button() == 0) {
+			WidgetGroup group = getGroup(slot);
+			if (group != null) {
+				int ox = ((int) event.x()) - group.x();
+				int oy = ((int) event.y()) - group.y();
+				if (!slot.getBounds().contains(ox, oy) && !slot.getStack().isEmpty()) {
+					EmiScreenManager.startDrag(slot.getStack());
+					pressedSlot = null;
+				}
+			}
+		}
+		EmiScreenManager.mouseDragged(event.x(), event.y(), event.button(), deltaX, deltaY);
+		return super.mouseDragged(event, deltaX, deltaY);
+	}
+
+	@Override
 	public boolean mouseReleased(MouseButtonEvent event) {
+		if (EmiScreenManager.mouseReleased(event.x(), event.y(), event.button())) {
+			pressedSlot = null;
+			return true;
+		}
 		if (pressedSlot instanceof SlotWidget slot) {
 			WidgetGroup group = getGroup(slot);
 			if (group != null) {

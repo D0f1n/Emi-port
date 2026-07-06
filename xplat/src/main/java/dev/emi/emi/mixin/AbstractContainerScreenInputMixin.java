@@ -34,4 +34,21 @@ public abstract class AbstractContainerScreenInputMixin {
 			cir.setReturnValue(true);
 		}
 	}
+
+	@Inject(method = "mouseDragged(Lnet/minecraft/client/input/MouseButtonEvent;DD)Z",
+		at = @At("HEAD"), cancellable = true)
+	private void emi$mouseDragged(MouseButtonEvent event, double deltaX, double deltaY,
+			CallbackInfoReturnable<Boolean> cir) {
+		if (EmiScreenManager.mouseDragged(event.x(), event.y(), event.button(), deltaX, deltaY)) {
+			cir.setReturnValue(true);
+		}
+	}
+
+	@Inject(method = "mouseReleased(Lnet/minecraft/client/input/MouseButtonEvent;)Z",
+		at = @At("HEAD"), cancellable = true)
+	private void emi$mouseReleased(MouseButtonEvent event, CallbackInfoReturnable<Boolean> cir) {
+		if (EmiScreenManager.mouseReleased(event.x(), event.y(), event.button())) {
+			cir.setReturnValue(true);
+		}
+	}
 }
