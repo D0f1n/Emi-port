@@ -71,12 +71,23 @@ public class EmiDrawContext {
 		context.fill(x, y, x + width, y + height, color);
 	}
 
+	/**
+	 * 1.21.1's text renderer promoted alpha-0 colors (e.g. plain 0xFFFFFF) to opaque; 26.2 renders
+	 * them literally, i.e. invisible. Restore the old semantics for EMI's call sites.
+	 */
+	private static int opaque(int color) {
+		if ((color & 0xFC000000) == 0) {
+			color |= 0xFF000000;
+		}
+		return color;
+	}
+
 	public void drawText(Component text, int x, int y) {
 		drawText(text, x, y, -1);
 	}
 
 	public void drawText(Component text, int x, int y, int color) {
-		context.text(font(), text, x, y, color, false);
+		context.text(font(), text, x, y, opaque(color), false);
 	}
 
 	public void drawTextWithShadow(Component text, int x, int y) {
@@ -84,19 +95,19 @@ public class EmiDrawContext {
 	}
 
 	public void drawTextWithShadow(Component text, int x, int y, int color) {
-		context.text(font(), text, x, y, color, true);
+		context.text(font(), text, x, y, opaque(color), true);
 	}
 
 	public void drawText(FormattedCharSequence text, int x, int y, int color) {
-		context.text(font(), text, x, y, color, false);
+		context.text(font(), text, x, y, opaque(color), false);
 	}
 
 	public void drawCenteredTextWithShadow(Component text, int x, int y, int color) {
-		context.centeredText(font(), text, x, y, color);
+		context.centeredText(font(), text, x, y, opaque(color));
 	}
 
 	public void drawTextWithShadow(FormattedCharSequence text, int x, int y, int color) {
-		context.text(font(), text, x, y, color, true);
+		context.text(font(), text, x, y, opaque(color), true);
 	}
 
 	public void drawStack(EmiIngredient stack, int x, int y) {
