@@ -4,6 +4,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import com.google.common.collect.Lists;
@@ -12,11 +13,13 @@ import com.google.common.collect.Sets;
 import dev.emi.emi.api.EmiPlugin;
 import dev.emi.emi.api.EmiRegistry;
 import dev.emi.emi.api.recipe.EmiCraftingRecipe;
+import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.EmiRecipeCategory;
 import dev.emi.emi.api.recipe.EmiRecipeSorting;
 import dev.emi.emi.api.render.EmiTexture;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
+import dev.emi.emi.api.stack.TagEmiIngredient;
 import dev.emi.emi.handler.CraftingRecipeHandler;
 import dev.emi.emi.handler.InventoryRecipeHandler;
 import dev.emi.emi.mixin.accessor.PotionBrewingAccessor;
@@ -29,6 +32,7 @@ import dev.emi.emi.recipe.EmiFuelRecipe;
 import dev.emi.emi.recipe.EmiGrindstoneRecipe;
 import dev.emi.emi.recipe.EmiSmithingRecipe;
 import dev.emi.emi.recipe.EmiStonecuttingRecipe;
+import dev.emi.emi.recipe.EmiTagRecipe;
 import dev.emi.emi.recipe.special.EmiAnvilRepairItemRecipe;
 import dev.emi.emi.registry.EmiRecipeSource;
 import dev.emi.emi.registry.EmiRecipeSource.HarvestedRecipe;
@@ -72,6 +76,11 @@ import static dev.emi.emi.api.recipe.VanillaEmiRecipeCategories.*;
  * category displays checkpoint. Custom mod display types are not mapped here. TODO(jemi)
  */
 public class VanillaPlugin implements EmiPlugin {
+	public static EmiRecipeCategory TAG = new EmiRecipeCategory(EmiPort.id("emi:tag"),
+		EmiStack.of(Items.NAME_TAG), EmiStack.of(Items.NAME_TAG), EmiRecipeSorting.none());
+
+	public static EmiRecipeCategory RESOLUTION = new EmiRecipeCategory(EmiPort.id("emi:resolution"),
+		EmiStack.of(Items.COMPASS), EmiStack.of(Items.COMPASS));
 
 	@Override
 	public void register(EmiRegistry registry) {
@@ -112,6 +121,8 @@ public class VanillaPlugin implements EmiPlugin {
 		registry.addCategory(BREWING);
 		registry.addCategory(FUEL);
 		registry.addCategory(COMPOSTING);
+		registry.addCategory(TAG);
+		registry.addCategory(RESOLUTION);
 
 		registry.addWorkstation(CRAFTING, EmiStack.of(Items.CRAFTING_TABLE));
 		registry.addWorkstation(SMELTING, EmiStack.of(Items.FURNACE));
@@ -145,6 +156,12 @@ public class VanillaPlugin implements EmiPlugin {
 		safely("brewing", () -> addBrewing(registry));
 		safely("fuel", () -> addFuel(registry));
 		safely("composting", () -> addComposting(registry));
+
+		for (EmiTagKey<?> key : EmiTags.TAGS) {
+			if (new TagEmiIngredient(key.raw(), 1).getEmiStacks().size() > 1) {
+				addRecipeSafe(registry, () -> new EmiTagRecipe(key.raw()));
+			}
+		}
 	}
 
 	private static void addRepair(EmiRegistry registry) {
@@ -303,6 +320,14 @@ public class VanillaPlugin implements EmiPlugin {
 			runnable.run();
 		} catch (Throwable t) {
 			EmiLog.warn("Exception thrown when reloading " + name + " step in vanilla EMI plugin", t);
+		}
+	}
+
+	private static void addRecipeSafe(EmiRegistry registry, Supplier<EmiRecipe> supplier) {
+		try {
+			registry.addRecipe(supplier.get());
+		} catch (Throwable e) {
+			EmiLog.warn("Exception thrown when parsing EMI recipe (no ID available)", e);
 		}
 	}
 

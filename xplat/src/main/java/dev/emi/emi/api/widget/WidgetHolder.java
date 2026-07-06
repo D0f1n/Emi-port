@@ -1,9 +1,11 @@
 package dev.emi.emi.api.widget;
 
 import java.util.Random;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
 import dev.emi.emi.api.render.EmiTexture;
+import dev.emi.emi.api.widget.DrawableWidget.DrawableWidgetConsumer;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import net.minecraft.network.chat.Component;
@@ -42,6 +44,20 @@ public interface WidgetHolder {
 	default TextureWidget addTexture(EmiTexture texture, int x, int y) {
 		return addTexture(texture.texture, x, y, texture.width, texture.height, texture.u, texture.v,
 			texture.regionWidth, texture.regionHeight, texture.textureWidth, texture.textureHeight);
+	}
+
+	default DrawableWidget addDrawable(int x, int y, int width, int height, DrawableWidgetConsumer consumer) {
+		return add(new DrawableWidget(x, y, width, height, consumer));
+	}
+
+	default ButtonWidget addButton(int x, int y, int width, int height, int u, int v,
+			BooleanSupplier isActive, ButtonWidget.ClickAction action) {
+		return add(new ButtonWidget(x, y, width, height, u, v, isActive, action));
+	}
+
+	default ButtonWidget addButton(int x, int y, int width, int height, int u, int v,
+			Identifier texture, BooleanSupplier isActive, ButtonWidget.ClickAction action) {
+		return add(new ButtonWidget(x, y, width, height, u, v, texture, isActive, action));
 	}
 
 	default TextWidget addText(Component text, int x, int y, int color, boolean shadow) {
