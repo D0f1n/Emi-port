@@ -25,6 +25,7 @@ import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.stack.TagEmiIngredient;
 import dev.emi.emi.api.widget.GeneratedSlotWidget;
+import dev.emi.emi.handler.CookingRecipeHandler;
 import dev.emi.emi.handler.CraftingRecipeHandler;
 import dev.emi.emi.handler.InventoryRecipeHandler;
 import dev.emi.emi.mixin.accessor.AxeItemAccessor;
@@ -80,7 +81,10 @@ import net.minecraft.world.item.crafting.display.ShapelessCraftingRecipeDisplay;
 import net.minecraft.world.item.crafting.display.SlotDisplay;
 import net.minecraft.world.item.crafting.display.SmithingRecipeDisplay;
 import net.minecraft.world.item.crafting.display.StonecutterRecipeDisplay;
+import net.minecraft.world.inventory.BlastFurnaceMenu;
+import net.minecraft.world.inventory.FurnaceMenu;
 import net.minecraft.world.inventory.MenuType;
+import net.minecraft.world.inventory.SmokerMenu;
 import net.minecraft.tags.EnchantmentTags;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.Repairable;
@@ -180,10 +184,11 @@ public class VanillaPlugin implements EmiPlugin {
 		registry.addWorkstation(BREWING, EmiStack.of(Items.BREWING_STAND));
 		registry.addWorkstation(COMPOSTING, EmiStack.of(Items.COMPOSTER));
 
-		// Craft-fill handlers for the vanilla crafting grids. The original's cooking/stonecutting
-		// handlers return with the polish round. TODO(polish)
 		registry.addRecipeHandler(null, new InventoryRecipeHandler());
 		registry.addRecipeHandler(MenuType.CRAFTING, new CraftingRecipeHandler());
+		registry.addRecipeHandler(MenuType.FURNACE, new CookingRecipeHandler<FurnaceMenu>(SMELTING));
+		registry.addRecipeHandler(MenuType.BLAST_FURNACE, new CookingRecipeHandler<BlastFurnaceMenu>(BLASTING));
+		registry.addRecipeHandler(MenuType.SMOKER, new CookingRecipeHandler<SmokerMenu>(SMOKING));
 
 		for (HarvestedRecipe entry : EmiRecipeSource.recipes) {
 			try {
