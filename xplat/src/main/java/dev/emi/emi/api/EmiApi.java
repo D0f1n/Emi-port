@@ -22,6 +22,7 @@ import dev.emi.emi.registry.EmiRecipes;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiFavorite;
 import dev.emi.emi.runtime.EmiHistory;
+import dev.emi.emi.runtime.EmiSidebars;
 import dev.emi.emi.screen.EmiScreenManager;
 import dev.emi.emi.screen.RecipeScreen;
 import net.minecraft.client.Minecraft;
@@ -190,6 +191,7 @@ public class EmiApi {
 		recipes = recipes.entrySet().stream().filter(e -> !e.getValue().isEmpty())
 			.collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()));
 		if (!recipes.isEmpty()) {
+			EmiSidebars.lookup(stack);
 			if (getHandledScreen() == null) {
 				client.gui.setScreen(new InventoryScreen(client.player));
 			}

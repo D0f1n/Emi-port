@@ -19,6 +19,7 @@ import dev.emi.emi.api.stack.Comparison;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.runtime.EmiLog;
+import dev.emi.emi.runtime.EmiSidebars;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import net.minecraft.client.Minecraft;
@@ -109,6 +110,7 @@ public class EmiRecipeFiller {
 			EmiPlayerInventory inv = handler.getInventory(screen);
 			EmiCraftContext<T> context = new EmiCraftContext<T>(screen, inv, type, destination, amount);
 			if (handler.canCraft(recipe, context)) {
+				EmiSidebars.craft(recipe);
 				boolean crafted = handler.craft(recipe, context);
 				if (crafted) {
 					Minecraft.getInstance().gui.setScreen(screen);
