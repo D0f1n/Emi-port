@@ -131,6 +131,9 @@ public class EmiReload {
 			}
 		}
 		EmiRecipes.bake();
+		// After bake so favorite recipe ids can resolve against the recipe manager, as the original
+		// loads persistent data at the end of its reload.
+		EmiPersistentData.load();
 		for (EmiRecipeCategory category : EmiRecipes.manager.getCategories()) {
 			EmiLog.info("  " + category.getId() + ": " + EmiRecipes.manager.getRecipes(category).size() + " recipes");
 		}

@@ -118,6 +118,12 @@ public class EmiRenderHelper {
 		context.drawTexture(WIDGETS, x + 12, y, 12, 252, 4, 4);
 	}
 
+	// The original lifted this badge by z 200 on the 3D pose stack; the 26.2 2D pose has no z, and
+	// the badge draws after the stack like the ingredient/catalyst markers above, so a plain draw works.
+	public static void renderRecipeFavorite(EmiIngredient ingredient, EmiDrawContext context, int x, int y) {
+		context.drawTexture(WIDGETS, x + 12, y, 16, 252, 4, 4);
+	}
+
 	public static void drawNinePatch(EmiDrawContext context, Identifier texture, int x, int y, int w, int h, int u, int v, int cornerLength, int centerLength) {
 		int cor = cornerLength;
 		int cen = centerLength;

@@ -20,6 +20,7 @@ import dev.emi.emi.api.stack.TagEmiIngredient;
 import dev.emi.emi.recipe.EmiTagRecipe;
 import dev.emi.emi.registry.EmiRecipes;
 import dev.emi.emi.registry.EmiStackList;
+import dev.emi.emi.runtime.EmiFavorite;
 import dev.emi.emi.runtime.EmiHistory;
 import dev.emi.emi.screen.EmiScreenManager;
 import dev.emi.emi.screen.RecipeScreen;
@@ -53,6 +54,13 @@ public class EmiApi {
 
 	public static EmiRecipeManager getRecipeManager() {
 		return EmiRecipes.manager;
+	}
+
+	public static @Nullable EmiRecipe getRecipeContext(EmiIngredient stack) {
+		if (stack instanceof EmiFavorite fav) {
+			return fav.getRecipe();
+		}
+		return null;
 	}
 
 	/**
