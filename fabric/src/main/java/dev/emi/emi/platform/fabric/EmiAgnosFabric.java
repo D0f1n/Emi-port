@@ -14,10 +14,13 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.level.material.Fluid;
 
 public class EmiAgnosFabric extends EmiAgnos {
@@ -34,6 +37,16 @@ public class EmiAgnosFabric extends EmiAgnos {
 	@Override
 	protected boolean isModLoadedAgnos(String id) {
 		return FabricLoader.getInstance().isModLoaded(id);
+	}
+
+	@Override
+	protected boolean isForgeAgnos() {
+		return false;
+	}
+
+	@Override
+	protected boolean isEnchantableAgnos(ItemStack stack, Holder<Enchantment> enchantment) {
+		return true;
 	}
 
 	@Override

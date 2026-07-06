@@ -32,8 +32,12 @@ import dev.emi.emi.recipe.EmiFuelRecipe;
 import dev.emi.emi.recipe.EmiGrindstoneRecipe;
 import dev.emi.emi.recipe.EmiSmithingRecipe;
 import dev.emi.emi.recipe.EmiStonecuttingRecipe;
+import dev.emi.emi.platform.EmiAgnos;
 import dev.emi.emi.recipe.EmiTagRecipe;
+import dev.emi.emi.recipe.special.EmiAnvilEnchantRecipe;
 import dev.emi.emi.recipe.special.EmiAnvilRepairItemRecipe;
+import dev.emi.emi.recipe.special.EmiGrindstoneDisenchantingBookRecipe;
+import dev.emi.emi.recipe.special.EmiGrindstoneDisenchantingRecipe;
 import dev.emi.emi.registry.EmiRecipeSource;
 import dev.emi.emi.registry.EmiRecipeSource.HarvestedRecipe;
 import dev.emi.emi.registry.EmiTags;
@@ -60,6 +64,8 @@ import net.minecraft.world.item.crafting.display.SlotDisplay;
 import net.minecraft.world.item.crafting.display.SmithingRecipeDisplay;
 import net.minecraft.world.item.crafting.display.StonecutterRecipeDisplay;
 import net.minecraft.world.inventory.MenuType;
+import net.minecraft.tags.EnchantmentTags;
+import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.Repairable;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.ComposterBlock;
@@ -169,23 +175,78 @@ public class VanillaPlugin implements EmiPlugin {
 
 	private static void addRepair(EmiRegistry registry) {
 		// On 26.2 repair materials live in the REPAIRABLE data component; tool/armor material
-		// classes are gone. Enchanting/disenchanting recipes are deferred to the polish round.
-		for (Item i : EmiPort.getItemRegistry()) {
+		// classes are gone. Enchantments are a dynamic registry, so recipes carry holders.
+		List<Holder<Enchantment>> targetedEnchantments = Lists.newArrayList();
+		List<Holder<Enchantment>> universalEnchantments = Lists.newArrayList();
+		for (Holder.Reference<Enchantment> enchantment : EmiPort.getRegistryAccess()
+				.lookupOrThrow(Registries.ENCHANTMENT).listElements().toList()) {
 			try {
-				if (i.components().getOrDefault(DataComponents.MAX_DAMAGE, 0) <= 0) {
+				if (enchantment.value().canEnchant(ItemStack.EMPTY)) {
+					universalEnchantments.add(enchantment);
 					continue;
 				}
-				Repairable repairable = i.components().get(DataComponents.REPAIRABLE);
-				if (repairable != null && repairable.items().size() > 0) {
-					Item material = repairable.items().get(0).value();
-					Identifier id = synthetic("anvil/repairing/material", EmiUtil.subId(i) + "/" + EmiUtil.subId(material));
-					registry.addRecipe(new EmiAnvilRecipe(EmiStack.of(i),
-						EmiIngredient.of(Ingredient.of(repairable.items())), id));
+			} catch (Throwable t) {
+			}
+			targetedEnchantments.add(enchantment);
+		}
+		for (Item i : EmiPort.getItemRegistry()) {
+			try {
+				if (i.components().getOrDefault(DataComponents.MAX_DAMAGE, 0) > 0) {
+					Repairable repairable = i.components().get(DataComponents.REPAIRABLE);
+					if (repairable != null && repairable.items().size() > 0) {
+						Item material = repairable.items().get(0).value();
+						Identifier id = synthetic("anvil/repairing/material", EmiUtil.subId(i) + "/" + EmiUtil.subId(material));
+						registry.addRecipe(new EmiAnvilRecipe(EmiStack.of(i),
+							EmiIngredient.of(Ingredient.of(repairable.items())), id));
+					}
+					registry.addRecipe(new EmiAnvilRepairItemRecipe(i, synthetic("anvil/repairing/tool", EmiUtil.subId(i))));
+					registry.addRecipe(new EmiGrindstoneRecipe(i, synthetic("grindstone/repairing", EmiUtil.subId(i))));
 				}
-				registry.addRecipe(new EmiAnvilRepairItemRecipe(i, synthetic("anvil/repairing/tool", EmiUtil.subId(i))));
-				registry.addRecipe(new EmiGrindstoneRecipe(i, synthetic("grindstone/repairing", EmiUtil.subId(i))));
 			} catch (Throwable t) {
 				EmiLog.warn("Exception thrown registering repair recipes for " + EmiUtil.subId(i), t);
+			}
+			try {
+				ItemStack defaultStack = i.getDefaultInstance();
+				int acceptableEnchantments = 0;
+				Consumer<Holder<Enchantment>> consumer = e -> {
+					int max = e.value().getMaxLevel();
+					addRecipeSafe(registry, () -> new EmiAnvilEnchantRecipe(i, e, max,
+						synthetic("anvil/enchanting", EmiUtil.subId(i) + "/" + EmiUtil.subId(e.unwrapKey().get().identifier()) + "/" + max)));
+				};
+				for (Holder<Enchantment> e : targetedEnchantments) {
+					// The original also consulted Item.isEnchantable(stack); on 26.2 enchantability
+					// is the ENCHANTABLE component, covered by ItemStack.isEnchantable().
+					if (e.value().canEnchant(defaultStack) && defaultStack.isEnchantable()
+							&& EmiAgnos.isEnchantable(defaultStack, e)) {
+						consumer.accept(e);
+						acceptableEnchantments++;
+					}
+				}
+				if (acceptableEnchantments > 0) {
+					for (Holder<Enchantment> e : universalEnchantments) {
+						if (e.value().canEnchant(defaultStack)) {
+							consumer.accept(e);
+							acceptableEnchantments++;
+						}
+					}
+					addRecipeSafe(registry, () -> new EmiGrindstoneDisenchantingRecipe(i, synthetic("grindstone/disenchanting/tool", EmiUtil.subId(i))));
+				}
+			} catch (Throwable t) {
+				EmiLog.warn("Exception thrown registering enchantment recipes for " + EmiUtil.subId(i), t);
+			}
+		}
+
+		for (Holder.Reference<Enchantment> e : EmiPort.getRegistryAccess()
+				.lookupOrThrow(Registries.ENCHANTMENT).listElements().toList()) {
+			if (!e.is(EnchantmentTags.CURSE)) {
+				int max = Math.min(10, e.value().getMaxLevel());
+				int min = e.value().getMinLevel();
+				while (min <= max) {
+					int level = min;
+					addRecipeSafe(registry, () -> new EmiGrindstoneDisenchantingBookRecipe(e, level,
+						synthetic("grindstone/disenchanting/book", EmiUtil.subId(e.unwrapKey().get().identifier()) + "/" + level)));
+					min++;
+				}
 			}
 		}
 	}

@@ -8,10 +8,13 @@ import dev.emi.emi.platform.EmiAgnos;
 import dev.emi.emi.runtime.EmiDrawContext;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.level.material.Fluid;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.ModList;
@@ -31,6 +34,17 @@ public class EmiAgnosNeoForge extends EmiAgnos {
 	@Override
 	protected boolean isModLoadedAgnos(String id) {
 		return ModList.get().isLoaded(id);
+	}
+
+	@Override
+	protected boolean isForgeAgnos() {
+		return true;
+	}
+
+	@Override
+	protected boolean isEnchantableAgnos(ItemStack stack, Holder<Enchantment> enchantment) {
+		// isBookEnchantable is gone on 26.2; supportsEnchantment is the per-stack override hook.
+		return stack.supportsEnchantment(enchantment);
 	}
 
 	@Override

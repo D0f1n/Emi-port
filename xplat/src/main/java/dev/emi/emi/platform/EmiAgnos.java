@@ -2,10 +2,13 @@ package dev.emi.emi.platform;
 
 import dev.emi.emi.api.stack.FluidEmiStack;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.level.material.Fluid;
 
 /**
@@ -42,6 +45,22 @@ public abstract class EmiAgnos {
 	}
 
 	protected abstract boolean isModLoadedAgnos(String id);
+
+	public static boolean isForge() {
+		return delegate != null && delegate.isForgeAgnos();
+	}
+
+	protected abstract boolean isForgeAgnos();
+
+	/**
+	 * Whether the enchantment can land on the stack in an anvil. Beyond vanilla's supported-items
+	 * set, NeoForge lets items opt in per-stack.
+	 */
+	public static boolean isEnchantable(ItemStack stack, Holder<Enchantment> enchantment) {
+		return delegate.isEnchantableAgnos(stack, enchantment);
+	}
+
+	protected abstract boolean isEnchantableAgnos(ItemStack stack, Holder<Enchantment> enchantment);
 
 	public static Component getFluidName(Fluid fluid, DataComponentPatch componentChanges) {
 		return delegate.getFluidNameAgnos(fluid, componentChanges);
