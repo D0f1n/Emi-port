@@ -283,6 +283,14 @@ public class RecipeScreen extends Screen {
 		return EmiStack.EMPTY;
 	}
 
+	/** The hovered slot's recipe context, for favoriting recipe outputs with their recipe attached. */
+	public EmiRecipe getHoveredRecipeContext() {
+		if (hoveredWidget instanceof SlotWidget slot) {
+			return slot.getRecipe();
+		}
+		return null;
+	}
+
 	public RecipeTab getTabAt(int mx, int my) {
 		if (mx >= x + 16 + tabOff && mx < x + backgroundWidth && my >= y - 24 && my < y) {
 			int n = (mx - x - 16 - tabOff) / 24 + tabPage * tabPageSize;

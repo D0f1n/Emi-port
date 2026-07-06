@@ -1,20 +1,24 @@
 package dev.emi.emi.screen;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 import dev.emi.emi.EmiPort;
 import dev.emi.emi.EmiRenderHelper;
 import dev.emi.emi.api.EmiApi;
+import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.widget.Bounds;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiDrawContext;
+import dev.emi.emi.runtime.EmiFavorites;
 import dev.emi.emi.screen.widget.SizedButtonWidget;
 import dev.emi.emi.search.EmiSearch;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
 import net.minecraft.client.input.CharacterEvent;
@@ -23,45 +27,42 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
 /**
- * The EMI overlay core, trimmed to the main index panel and the search bar. Reproduces the original's
- * right-sidebar {@code ScreenSpace} layout math and the bottom-center search bar with EMI 1.21.1 config
- * defaults inlined, without the 4-panel sidebar/favourites/history machinery. Driven from
- * {@code ScreenMixin} for container screens and directly from {@link RecipeScreen}.
+ * The EMI overlay core: the right index panel, the left favorites panel and the search bar.
+ * Reproduces the original's {@code ScreenSpace} layout math with EMI 1.21.1 config defaults inlined
+ * (right sidebar pages INDEX, left sidebar pages FAVORITES), without the 4-panel sidebar-page cycling
+ * machinery. Driven from {@code ScreenMixin} for container screens and directly from
+ * {@link RecipeScreen}.
  */
 public class EmiScreenManager {
 	private static final int PADDING_SIZE = 1;
 	static final int ENTRY_SIZE = 16 + PADDING_SIZE * 2;
-	// EMI 1.21.1 right-sidebar defaults, inlined. TODO(polish): config
-	private static final int MAX_COLUMNS = 12; // ui.right-sidebar-size columns
-	private static final int MAX_ROWS = 100; // ui.right-sidebar-size rows
-	private static final int MARGIN = 2; // ui.right-sidebar-margins, all sides
-	private static final int HEADER_OFFSET = 18; // ui.right-sidebar-header = VISIBLE
+	// EMI 1.21.1 sidebar defaults, inlined. TODO(polish): config
+	private static final int MAX_COLUMNS = 12; // ui.right/left-sidebar-size columns
+	private static final int MAX_ROWS = 100; // ui.right/left-sidebar-size rows
+	private static final int MARGIN = 2; // ui.right/left-sidebar-margins, all sides
+	private static final int HEADER_OFFSET = 18; // ui.right/left-sidebar-header = VISIBLE
 	// Theme TRANSPARENT: no background, zero padding. TODO(polish): VANILLA/MODERN themes
 	private static final int SEARCH_WIDTH = 160; // centered search bar width (ui.center-search-bar = true)
+	private static final int FAVORITE_KEY = 65; // GLFW_KEY_A, the original's default bind. TODO(config)
 
 	/** The stacks currently shown (filtered by search); defaults to the whole index. */
 	public static List<? extends EmiIngredient> searchedStacks = List.of();
-	private static int page = 0;
 
-	/** The main index panel region, rebuilt when the screen or GUI geometry changes. */
-	private static ScreenSpace space;
-	private static int lastWidth, lastHeight, lastGuiRight;
+	/** Right sidebar: the searchable index, filled right-to-left like the original. */
+	private static final SidebarPanel indexPanel = new SidebarPanel(true, EmiScreenManager::stacks);
+	/** Left sidebar: favorites, filled left-to-right like the original. */
+	private static final SidebarPanel favoritesPanel = new SidebarPanel(false, () -> EmiFavorites.favoriteSidebar);
+	private static final List<SidebarPanel> panels = List.of(indexPanel, favoritesPanel);
+	private static int lastWidth, lastHeight, lastGuiLeft, lastGuiRight;
+	private static int lastMouseX, lastMouseY;
 
 	/** EMI's search bar — a vanilla EditBox owned and driven by the manager (not a screen child). */
 	public static EditBox search;
 	private static Screen lastScreen;
 
-	// Header page-turn arrows, as in the original sidebar header.
-	private static final SizedButtonWidget pageLeft = new SizedButtonWidget(0, 0, 16, 16, 224, 0,
-		EmiScreenManager::hasMultiplePages, w -> scrollPage(-1));
-	private static final SizedButtonWidget pageRight = new SizedButtonWidget(0, 0, 16, 16, 240, 0,
-		EmiScreenManager::hasMultiplePages, w -> scrollPage(1));
-	// TODO(polish): sidebar cycle button (INDEX/CRAFTABLES) once the craftables page exists
-	// TODO(polish): config (emi) and recipe tree buttons at the bottom left
-
 	public static void setSearchedStacks(List<? extends EmiIngredient> stacks) {
 		searchedStacks = stacks;
-		page = 0;
+		indexPanel.page = 0;
 	}
 
 	public static boolean isSearchFocused() {
@@ -79,7 +80,9 @@ public class EmiScreenManager {
 	/** Clears the search and shows the full index; called when the index is (re)built on world join. */
 	public static void reset() {
 		searchedStacks = EmiStackList.stacks;
-		page = 0;
+		for (SidebarPanel panel : panels) {
+			panel.page = 0;
+		}
 		if (search != null) {
 			search.setValue("");
 			search.setFocused(false);
@@ -99,8 +102,10 @@ public class EmiScreenManager {
 			search.setFocused(true);
 			return true;
 		}
-		if (pageLeft.mouseClicked(mx, my, event.button()) || pageRight.mouseClicked(mx, my, event.button())) {
-			return true;
+		for (SidebarPanel panel : panels) {
+			if (panel.pageLeft.mouseClicked(mx, my, event.button()) || panel.pageRight.mouseClicked(mx, my, event.button())) {
+				return true;
+			}
 		}
 		EmiIngredient stack = getStackAt(mx, my);
 		if (stack != null && !stack.isEmpty()) {
@@ -118,8 +123,9 @@ public class EmiScreenManager {
 	}
 
 	public static boolean mouseScrolled(double mouseX, double mouseY, double verticalAmount) {
-		if (isInPanel((int) mouseX, (int) mouseY)) {
-			scrollPage(verticalAmount > 0 ? -1 : 1);
+		SidebarPanel panel = getHoveredPanel((int) mouseX, (int) mouseY);
+		if (panel != null) {
+			panel.scrollPage(verticalAmount > 0 ? -1 : 1);
 			return true;
 		}
 		return false;
@@ -135,6 +141,37 @@ public class EmiScreenManager {
 			return true; // consume so vanilla doesn't act on the key (keybinds, screen shortcuts, etc.)
 		}
 		return false;
+	}
+
+	/**
+	 * The original's favorite keybind (default A): toggles the hovered stack as a favorite, with the
+	 * recipe context on recipe screen slots. Called from the keyboard dispatch mixin when the search
+	 * is not focused, and only handles the event when an EMI stack is actually hovered.
+	 */
+	public static boolean handleFavoriteKey(KeyEvent event) {
+		if (event.key() != FAVORITE_KEY || (event.modifiers() & 0x7) != 0) {
+			return false;
+		}
+		Screen screen = client().gui.screen();
+		if (!(screen instanceof AbstractContainerScreen<?>) && !(screen instanceof RecipeScreen)) {
+			return false;
+		}
+		// Never steal keys from a focused text field (e.g. the creative inventory search).
+		if (screen.getFocused() instanceof EditBox) {
+			return false;
+		}
+		EmiIngredient hovered = getStackAt(lastMouseX, lastMouseY);
+		EmiRecipe context = EmiApi.getRecipeContext(hovered);
+		if ((hovered == null || hovered.isEmpty()) && screen instanceof RecipeScreen rs) {
+			hovered = rs.getHoveredStack();
+			context = rs.getHoveredRecipeContext();
+		}
+		if (hovered == null || hovered.isEmpty()) {
+			return false;
+		}
+		EmiFavorites.addFavorite(hovered, context);
+		favoritesPanel.wrapPage();
+		return true;
 	}
 
 	public static boolean charTyped(CharacterEvent event) {
@@ -154,60 +191,46 @@ public class EmiScreenManager {
 		return searchedStacks;
 	}
 
-	private static boolean hasMultiplePages() {
-		return space != null && stacks().size() > space.pageSize;
-	}
-
-	private static int totalPages() {
-		if (space == null || space.pageSize <= 0) {
-			return 1;
-		}
-		return (stacks().size() - 1) / space.pageSize + 1;
-	}
-
-	/** Turns pages with wrap-around, as the original sidebar does. */
-	public static void scrollPage(int delta) {
-		page += delta;
-		wrapPage();
-	}
-
-	private static void wrapPage() {
-		int totalPages = totalPages();
-		if (page >= totalPages) {
-			page = 0;
-		} else if (page < 0) {
-			page = totalPages - 1;
-		}
-	}
-
 	/**
-	 * Rebuilds the right-panel {@code ScreenSpace} from the GUI geometry — the original's
-	 * {@code recalculate} + {@code createScreenSpace} for the RIGHT sidebar with default settings:
-	 * align RIGHT/TOP, margins 2, transparent theme, visible header.
+	 * Rebuilds both panels' {@code ScreenSpace}s from the GUI geometry — the original's
+	 * {@code recalculate} + {@code createScreenSpace} with default settings: the right sidebar aligned
+	 * RIGHT/TOP and the left sidebar aligned LEFT/TOP, margins 2, transparent theme, visible header.
 	 */
-	private static void recalculate(int guiRight) {
+	private static void recalculate(int guiLeft, int guiRight) {
 		Minecraft client = Minecraft.getInstance();
 		int screenWidth = client.getWindow().getGuiScaledWidth();
 		int screenHeight = client.getWindow().getGuiScaledHeight();
-		if (space != null && lastWidth == screenWidth && lastHeight == screenHeight && lastGuiRight == guiRight) {
+		if (indexPanel.space != null && favoritesPanel.space != null && lastWidth == screenWidth
+				&& lastHeight == screenHeight && lastGuiLeft == guiLeft && lastGuiRight == guiRight) {
 			return;
 		}
 		lastWidth = screenWidth;
 		lastHeight = screenHeight;
+		lastGuiLeft = guiLeft;
 		lastGuiRight = guiRight;
 
-		int right = Math.min(screenWidth - ENTRY_SIZE * 2, guiRight);
-		Bounds bounds = new Bounds(right, 0, screenWidth - right, screenHeight);
 		// TODO(polish): exclusion areas (recipe book, plugin-provided) — empty for now
 		List<Bounds> exclusion = List.of();
 
+		int right = Math.min(screenWidth - ENTRY_SIZE * 2, guiRight);
+		indexPanel.space = createSpace(new Bounds(right, 0, screenWidth - right, screenHeight), exclusion, true);
+
+		int left = Math.max(ENTRY_SIZE * 2, guiLeft);
+		favoritesPanel.space = createSpace(new Bounds(0, 0, left, screenHeight), exclusion, false);
+
+		for (SidebarPanel panel : panels) {
+			panel.wrapPage();
+		}
+	}
+
+	private static ScreenSpace createSpace(Bounds bounds, List<Bounds> exclusion, boolean rtl) {
 		// Try a more optimistic approach to position the bounding box slightly more
 		// pleasantly if applicable
 		int idealWidth = Math.min(MAX_COLUMNS * ENTRY_SIZE + MARGIN * 2, bounds.width());
 		int idealHeight = Math.min(MAX_ROWS * ENTRY_SIZE + MARGIN * 2 + HEADER_OFFSET, bounds.height());
-		// Align RIGHT (the original keys both axes of the ideal box off the horizontal alignment)
-		int idealX = bounds.right() - idealWidth;
-		int idealY = bounds.bottom() - idealHeight;
+		// The original keys both axes of the ideal box off the horizontal alignment
+		int idealX = rtl ? bounds.right() - idealWidth : bounds.left();
+		int idealY = rtl ? bounds.bottom() - idealHeight : bounds.top();
 		Bounds idealBounds = constrainBounds(exclusion, new Bounds(idealX, idealY, idealWidth, idealHeight));
 
 		bounds = constrainBounds(exclusion, bounds);
@@ -225,15 +248,14 @@ public class EmiScreenManager {
 		int ySpan = yMax - yMin;
 		int tw = Math.max(0, Math.min(xSpan / ENTRY_SIZE, MAX_COLUMNS));
 		int th = Math.max(0, Math.min((ySpan - HEADER_OFFSET) / ENTRY_SIZE, MAX_ROWS));
-		int tx = xMax - tw * ENTRY_SIZE; // align RIGHT
+		int tx = rtl ? xMax - tw * ENTRY_SIZE : xMin; // align RIGHT for the index, LEFT for favorites
 		int ty = yMin + HEADER_OFFSET; // align TOP
-		space = new ScreenSpace(tx, ty, tw, th, true, exclusion);
-		wrapPage();
+		return new ScreenSpace(tx, ty, tw, th, rtl, exclusion);
 	}
 
 	/**
-	 * The original's exclusion-driven bounds shrinking, specialized to the right panel's alignment
-	 * (RIGHT/TOP). With no exclusion areas registered this is a no-op.
+	 * The original's exclusion-driven bounds shrinking, specialized to TOP vertical alignment.
+	 * With no exclusion areas registered this is a no-op.
 	 */
 	private static Bounds constrainBounds(List<Bounds> exclusion, Bounds bounds) {
 		for (int i = 0; i < exclusion.size(); i++) {
@@ -273,7 +295,9 @@ public class EmiScreenManager {
 		Minecraft client = client();
 		int screenWidth = client.getWindow().getGuiScaledWidth();
 		int screenHeight = client.getWindow().getGuiScaledHeight();
-		recalculate(leftPos + imageWidth);
+		recalculate(leftPos, leftPos + imageWidth);
+		lastMouseX = mouseX;
+		lastMouseY = mouseY;
 		// Drop search focus when the screen changes, so the EMI search never swallows input meant for a
 		// different screen (e.g. a vanilla anvil/sign rename field).
 		if (screen != lastScreen) {
@@ -296,41 +320,9 @@ public class EmiScreenManager {
 		search.setWidth(SEARCH_WIDTH);
 		search.extractRenderState(graphics, mouseX, mouseY, delta);
 
-		if (space == null || space.pageSize <= 0) {
-			return;
-		}
-		List<? extends EmiIngredient> stacks = stacks();
-		int totalPages = totalPages();
-		wrapPage();
-
-		// Panel header: page-turn arrows, page count, scroll indicator.
-		pageLeft.x = space.tx;
-		pageLeft.y = space.ty - 18;
-		pageRight.x = space.tx + space.tw * ENTRY_SIZE - 16;
-		pageRight.y = pageLeft.y;
-		pageLeft.render(context, mouseX, mouseY, delta);
-		pageRight.render(context, mouseX, mouseY, delta);
-		drawHeader(context, totalPages);
-
-		// Hover highlight goes under the icons, as in the original.
 		EmiIngredient hovered = getStackAt(mouseX, mouseY);
-		if (hovered != null && !hovered.isEmpty()) {
-			int off = space.getRawOffsetFromMouse(mouseX, mouseY);
-			context.fill(space.getRawX(off), space.getRawY(off), ENTRY_SIZE, ENTRY_SIZE, 0x80ffffff);
-		}
-
-		// Grid of stacks.
-		int i = page * space.pageSize;
-		outer: for (int yo = 0; yo < space.th; yo++) {
-			for (int xo = 0; xo < space.getWidth(yo); xo++) {
-				if (i >= stacks.size()) {
-					break outer;
-				}
-				int cx = space.getX(xo, yo);
-				int cy = space.getY(xo, yo);
-				stacks.get(i++).render(graphics, cx + 1, cy + 1, delta,
-					EmiIngredient.RENDER_ICON | EmiIngredient.RENDER_AMOUNT | EmiIngredient.RENDER_INGREDIENT);
-			}
+		for (SidebarPanel panel : panels) {
+			panel.render(context, graphics, mouseX, mouseY, delta);
 		}
 
 		// Hover tooltip.
@@ -342,47 +334,152 @@ public class EmiScreenManager {
 		}
 	}
 
-	private static void drawHeader(EmiDrawContext context, int totalPages) {
-		Component text = EmiRenderHelper.getPageText(page + 1, totalPages, (space.tw - 3) * ENTRY_SIZE);
-		int x = space.tx + (space.tw * ENTRY_SIZE) / 2;
-		int maxLeft = (space.tw - 2) * ENTRY_SIZE / 2 - ENTRY_SIZE;
-		int w = client().font.width(text) / 2;
-		if (w > maxLeft) {
-			x += (w - maxLeft);
-		}
-		context.drawText(text, x - client().font.width(text) / 2, space.ty - 15, -1);
-		if (totalPages > 1 && space.tw > 2) {
-			int scrollLeft = space.tx + 18;
-			int scrollWidth = space.tw * ENTRY_SIZE - 36;
-			int scrollY = space.ty - 4;
-			context.fill(scrollLeft, scrollY, scrollWidth, 2, 0x55555555);
-			EmiRenderHelper.drawScroll(context, scrollLeft, scrollY, scrollWidth, 2, page, totalPages, 0xFFFFFFFF);
-		}
-	}
-
-	public static boolean isInPanel(int mouseX, int mouseY) {
-		return space != null && space.contains(mouseX, mouseY);
-	}
-
-	/** The ingredient under the mouse, or null. */
-	public static EmiIngredient getStackAt(int mouseX, int mouseY) {
-		if (space == null || space.pageSize <= 0) {
-			return null;
-		}
-		int off = space.getRawOffsetFromMouse(mouseX, mouseY);
-		if (off < 0) {
-			return null;
-		}
-		List<? extends EmiIngredient> stacks = stacks();
-		int abs = page * space.pageSize + off;
-		if (abs >= 0 && abs < stacks.size()) {
-			return stacks.get(abs);
+	private static SidebarPanel getHoveredPanel(int mouseX, int mouseY) {
+		for (SidebarPanel panel : panels) {
+			if (panel.space != null && panel.space.pageSize > 0 && panel.space.contains(mouseX, mouseY)) {
+				return panel;
+			}
 		}
 		return null;
 	}
 
+	public static boolean isInPanel(int mouseX, int mouseY) {
+		return getHoveredPanel(mouseX, mouseY) != null;
+	}
+
+	/** The ingredient under the mouse, or null. */
+	public static EmiIngredient getStackAt(int mouseX, int mouseY) {
+		SidebarPanel panel = getHoveredPanel(mouseX, mouseY);
+		if (panel == null) {
+			return null;
+		}
+		return panel.getStackAt(mouseX, mouseY);
+	}
+
 	private static Minecraft client() {
 		return Minecraft.getInstance();
+	}
+
+	/**
+	 * One sidebar: a laid-out {@link ScreenSpace}, its page state and header widgets — the original's
+	 * {@code SidebarPanel}, fixed to a single sidebar page (INDEX on the right, FAVORITES on the left).
+	 */
+	private static class SidebarPanel {
+		final boolean rtl;
+		final Supplier<List<? extends EmiIngredient>> source;
+		final SizedButtonWidget pageLeft, pageRight;
+		ScreenSpace space;
+		int page;
+
+		SidebarPanel(boolean rtl, Supplier<List<? extends EmiIngredient>> source) {
+			this.rtl = rtl;
+			this.source = source;
+			this.pageLeft = new SizedButtonWidget(0, 0, 16, 16, 224, 0, this::hasMultiplePages, w -> scrollPage(-1));
+			this.pageRight = new SizedButtonWidget(0, 0, 16, 16, 240, 0, this::hasMultiplePages, w -> scrollPage(1));
+		}
+
+		List<? extends EmiIngredient> stacks() {
+			return source.get();
+		}
+
+		boolean hasMultiplePages() {
+			return space != null && stacks().size() > space.pageSize;
+		}
+
+		int totalPages() {
+			if (space == null || space.pageSize <= 0) {
+				return 1;
+			}
+			return Math.max(1, (stacks().size() - 1) / space.pageSize + 1);
+		}
+
+		/** Turns pages with wrap-around, as the original sidebar does. */
+		void scrollPage(int delta) {
+			page += delta;
+			wrapPage();
+		}
+
+		void wrapPage() {
+			int totalPages = totalPages();
+			if (page >= totalPages) {
+				page = 0;
+			} else if (page < 0) {
+				page = totalPages - 1;
+			}
+		}
+
+		EmiIngredient getStackAt(int mouseX, int mouseY) {
+			if (space == null || space.pageSize <= 0) {
+				return null;
+			}
+			int off = space.getRawOffsetFromMouse(mouseX, mouseY);
+			if (off < 0) {
+				return null;
+			}
+			List<? extends EmiIngredient> stacks = stacks();
+			int abs = page * space.pageSize + off;
+			if (abs >= 0 && abs < stacks.size()) {
+				return stacks.get(abs);
+			}
+			return null;
+		}
+
+		void render(EmiDrawContext context, GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
+			if (space == null || space.pageSize <= 0) {
+				return;
+			}
+			List<? extends EmiIngredient> stacks = stacks();
+			wrapPage();
+
+			// Panel header: page-turn arrows, page count, scroll indicator.
+			pageLeft.x = space.tx;
+			pageLeft.y = space.ty - 18;
+			pageRight.x = space.tx + space.tw * ENTRY_SIZE - 16;
+			pageRight.y = pageLeft.y;
+			pageLeft.render(context, mouseX, mouseY, delta);
+			pageRight.render(context, mouseX, mouseY, delta);
+			drawHeader(context);
+
+			// Hover highlight goes under the icons, as in the original.
+			EmiIngredient hovered = getStackAt(mouseX, mouseY);
+			if (hovered != null && !hovered.isEmpty()) {
+				int off = space.getRawOffsetFromMouse(mouseX, mouseY);
+				context.fill(space.getRawX(off), space.getRawY(off), ENTRY_SIZE, ENTRY_SIZE, 0x80ffffff);
+			}
+
+			// Grid of stacks.
+			int i = page * space.pageSize;
+			outer: for (int yo = 0; yo < space.th; yo++) {
+				for (int xo = 0; xo < space.getWidth(yo); xo++) {
+					if (i >= stacks.size()) {
+						break outer;
+					}
+					int cx = space.getX(xo, yo);
+					int cy = space.getY(xo, yo);
+					stacks.get(i++).render(graphics, cx + 1, cy + 1, delta,
+						EmiIngredient.RENDER_ICON | EmiIngredient.RENDER_AMOUNT | EmiIngredient.RENDER_INGREDIENT);
+				}
+			}
+		}
+
+		private void drawHeader(EmiDrawContext context) {
+			int totalPages = totalPages();
+			Component text = EmiRenderHelper.getPageText(page + 1, totalPages, (space.tw - 3) * ENTRY_SIZE);
+			int x = space.tx + (space.tw * ENTRY_SIZE) / 2;
+			int maxLeft = (space.tw - 2) * ENTRY_SIZE / 2 - ENTRY_SIZE;
+			int w = client().font.width(text) / 2;
+			if (w > maxLeft) {
+				x += (w - maxLeft);
+			}
+			context.drawText(text, x - client().font.width(text) / 2, space.ty - 15, -1);
+			if (totalPages > 1 && space.tw > 2) {
+				int scrollLeft = space.tx + 18;
+				int scrollWidth = space.tw * ENTRY_SIZE - 36;
+				int scrollY = space.ty - 4;
+				context.fill(scrollLeft, scrollY, scrollWidth, 2, 0x55555555);
+				EmiRenderHelper.drawScroll(context, scrollLeft, scrollY, scrollWidth, 2, page, totalPages, 0xFFFFFFFF);
+			}
+		}
 	}
 
 	/**
