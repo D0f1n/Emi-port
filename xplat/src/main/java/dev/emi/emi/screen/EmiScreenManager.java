@@ -21,6 +21,7 @@ import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiDrawContext;
 import dev.emi.emi.runtime.EmiFavorites;
 import dev.emi.emi.runtime.EmiSidebars;
+import dev.emi.emi.screen.widget.SidebarButtonWidget;
 import dev.emi.emi.screen.widget.SizedButtonWidget;
 import dev.emi.emi.search.EmiSearch;
 import net.minecraft.client.Minecraft;
@@ -136,7 +137,8 @@ public class EmiScreenManager {
 		}
 		for (SidebarPanel panel : panels) {
 			if (panel.headerVisible()
-					&& (panel.pageLeft.mouseClicked(mx, my, event.button()) || panel.pageRight.mouseClicked(mx, my, event.button()))) {
+					&& (panel.pageLeft.mouseClicked(mx, my, event.button()) || panel.cycle.mouseClicked(mx, my, event.button())
+						|| panel.pageRight.mouseClicked(mx, my, event.button()))) {
 				return true;
 			}
 		}
@@ -627,11 +629,12 @@ public class EmiScreenManager {
 	 * {@link #cycleType}), scroll-page state and header widgets — the original's
 	 * {@code SidebarPanel} without the subpanel spaces. TODO(polish)
 	 */
-	private static class SidebarPanel {
+	public static class SidebarPanel {
 		final SidebarSide side;
-		final SidebarPages pages;
+		public final SidebarPages pages;
 		final boolean rtl;
 		final SizedButtonWidget pageLeft, pageRight;
+		final SidebarButtonWidget cycle;
 		ScreenSpace space;
 		int sidebarPage;
 		int page;
@@ -642,9 +645,10 @@ public class EmiScreenManager {
 			this.rtl = side == SidebarSide.RIGHT;
 			this.pageLeft = new SizedButtonWidget(0, 0, 16, 16, 224, 0, this::hasMultiplePages, w -> scrollPage(-1));
 			this.pageRight = new SizedButtonWidget(0, 0, 16, 16, 240, 0, this::hasMultiplePages, w -> scrollPage(1));
+			this.cycle = new SidebarButtonWidget(0, 0, 16, 16, this);
 		}
 
-		SidebarType getType() {
+		public SidebarType getType() {
 			if (sidebarPage >= 0 && sidebarPage < pages.pages.size()) {
 				return pages.pages.get(sidebarPage).type;
 			}
@@ -681,7 +685,7 @@ public class EmiScreenManager {
 			}
 		}
 
-		void cycleType(int amount) {
+		public void cycleType(int amount) {
 			int page = sidebarPage + amount;
 			if (page >= pages.pages.size()) {
 				page = 0;
@@ -766,7 +770,10 @@ public class EmiScreenManager {
 				pageLeft.y = space.ty - 18;
 				pageRight.x = space.tx + space.tw * ENTRY_SIZE - 16;
 				pageRight.y = pageLeft.y;
+				cycle.x = space.tx + 18;
+				cycle.y = pageLeft.y - 1;
 				pageLeft.render(context, mouseX, mouseY, delta);
+				cycle.render(context, mouseX, mouseY, delta);
 				pageRight.render(context, mouseX, mouseY, delta);
 				drawHeader(context);
 			}
