@@ -9,6 +9,7 @@ import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.widget.RecipeFillButtonWidget;
 import dev.emi.emi.api.widget.TextWidget;
 import dev.emi.emi.api.widget.TextWidget.Alignment;
+import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.registry.EmiRecipeFiller;
 import dev.emi.emi.runtime.EmiLog;
 
@@ -32,7 +33,7 @@ public class RecipeDisplay {
 		this.recipe = recipe;
 		width = recipe.getDisplayWidth();
 		height = recipe.getDisplayHeight();
-		if (EmiRecipeFiller.isSupported(recipe)) {
+		if (EmiRecipeFiller.isSupported(recipe) && EmiConfig.recipeFillButton) {
 			rightButtons.add(ButtonType.FILL);
 		}
 		rows = Math.max(1, (height + DISPLAY_PADDING + 2) / 14);

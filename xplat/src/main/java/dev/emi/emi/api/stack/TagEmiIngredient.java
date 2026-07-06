@@ -10,6 +10,7 @@ import dev.emi.emi.EmiPort;
 import dev.emi.emi.EmiRenderHelper;
 import dev.emi.emi.EmiUtil;
 import dev.emi.emi.api.render.EmiRender;
+import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.registry.EmiTags;
 import dev.emi.emi.runtime.EmiDrawContext;
 import dev.emi.emi.runtime.EmiTagKey;
@@ -136,7 +137,11 @@ public class TagEmiIngredient implements EmiIngredient {
 			list.add(ClientTooltipComponent.create(
 				EmiPort.literal("#" + id, ChatFormatting.DARK_GRAY).getVisualOrderText()));
 		}
-		// TODO(screen): EMI's TagTooltipComponent (contained-stacks grid) + amount/mod-id lines.
+		if (EmiConfig.appendModId) {
+			list.add(ClientTooltipComponent.create(
+				EmiPort.literal(EmiUtil.getModName(id.getNamespace()), ChatFormatting.BLUE, ChatFormatting.ITALIC).getVisualOrderText()));
+		}
+		// TODO(screen): EMI's TagTooltipComponent (contained-stacks grid) + amount lines.
 		return list;
 	}
 }

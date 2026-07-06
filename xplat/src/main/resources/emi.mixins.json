@@ -10,6 +10,7 @@
     "ScreenMixin",
     "KeyboardHandlerMixin",
     "HoeItemMixin",
+    "ItemStackMixin",
     "accessor.AbstractContainerScreenAccessor",
     "accessor.AxeItemAccessor",
     "accessor.HoeItemAccessor",

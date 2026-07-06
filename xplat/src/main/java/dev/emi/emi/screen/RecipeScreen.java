@@ -85,9 +85,9 @@ public class RecipeScreen extends Screen {
 	@Override
 	protected void init() {
 		super.init();
-		minimumWidth = 176;
+		minimumWidth = Math.max(EmiConfig.minimumRecipeScreenWidth, 56);
 		backgroundWidth = minimumWidth;
-		backgroundHeight = Math.min(256, height - 52 - 20);
+		backgroundHeight = Math.min(EmiConfig.maximumRecipeScreenHeight, height - 52 - EmiConfig.verticalMargin);
 		x = (this.width - backgroundWidth) / 2;
 		y = (this.height - backgroundHeight) / 2 + 1;
 		this.tabPageSize = (minimumWidth - 32) / 24;

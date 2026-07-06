@@ -92,6 +92,10 @@ public class ConfigScreen extends Screen {
 	@Override
 	public void onClose() {
 		EmiConfig.writeConfig();
+		// Re-run the current search so changed search-by-default flags apply immediately.
+		if (EmiScreenManager.search != null) {
+			dev.emi.emi.search.EmiSearch.search(EmiScreenManager.search.getValue());
+		}
 		Minecraft.getInstance().gui.setScreen(last);
 	}
 

@@ -7,6 +7,7 @@ import com.google.common.collect.Lists;
 import dev.emi.emi.EmiPort;
 import dev.emi.emi.EmiUtil;
 import dev.emi.emi.api.stack.EmiStack;
+import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.jemi.impl.JemiTooltipBuilder;
 import dev.emi.emi.runtime.EmiDrawContext;
 import mezz.jei.api.ingredients.IIngredientHelper;
@@ -100,8 +101,7 @@ public class JemiStack<T> extends EmiStack {
 		list.addAll(builder.tooltip);
 
 		Identifier id = getId();
-		// TODO(polish): gate on EmiConfig.appendModId once the config system is ported.
-		if (id != null) {
+		if (EmiConfig.appendModId && id != null) {
 			String mod = EmiUtil.getModName(id.getNamespace());
 			list.add(ClientTooltipComponent.create(EmiPort.ordered(EmiPort.literal(mod, ChatFormatting.BLUE, ChatFormatting.ITALIC))));
 		}

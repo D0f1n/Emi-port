@@ -9,6 +9,7 @@ import com.google.common.collect.Lists;
 
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
+import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.screen.EmiScreenManager;
 
 /**
@@ -36,6 +37,11 @@ public class EmiSearch {
 
 	public static volatile List<? extends EmiIngredient> stacks = List.of();
 	public static volatile CompiledQuery compiledQuery;
+	/**
+	 * Set while the filter loop runs — the original's search-thread check, adapted to the synchronous
+	 * search: the ItemStack tooltip mixin must not append mod names into tooltips baked for matching.
+	 */
+	public static volatile boolean searching = false;
 
 	public static void search(String query) {
 		CompiledQuery compiled = new CompiledQuery(query);
@@ -46,11 +52,16 @@ public class EmiSearch {
 			return;
 		}
 		List<EmiIngredient> result = Lists.newArrayList();
-		for (EmiIngredient stack : source) {
-			List<EmiStack> ess = stack.getEmiStacks();
-			if (ess.size() == 1 && compiled.test(ess.get(0))) {
-				result.add(stack);
+		searching = true;
+		try {
+			for (EmiIngredient stack : source) {
+				List<EmiStack> ess = stack.getEmiStacks();
+				if (ess.size() == 1 && compiled.test(ess.get(0))) {
+					result.add(stack);
+				}
 			}
+		} finally {
+			searching = false;
 		}
 		apply(List.copyOf(result));
 	}
@@ -86,6 +97,30 @@ public class EmiSearch {
 				QueryType type = QueryType.fromString(q);
 				Function<String, Query> constructor = type.queryConstructor;
 				Function<String, Query> regexConstructor = type.regexQueryConstructor;
+				if (type == QueryType.DEFAULT) {
+					List<Function<String, Query>> constructors = Lists.newArrayList();
+					List<Function<String, Query>> regexConstructors = Lists.newArrayList();
+					constructors.add(constructor);
+					regexConstructors.add(regexConstructor);
+
+					if (EmiConfig.searchTooltipByDefault) {
+						constructors.add(QueryType.TOOLTIP.queryConstructor);
+						regexConstructors.add(QueryType.TOOLTIP.regexQueryConstructor);
+					}
+					if (EmiConfig.searchModNameByDefault) {
+						constructors.add(QueryType.MOD.queryConstructor);
+						regexConstructors.add(QueryType.MOD.regexQueryConstructor);
+					}
+					if (EmiConfig.searchTagsByDefault) {
+						constructors.add(QueryType.TAG.queryConstructor);
+						regexConstructors.add(QueryType.TAG.regexQueryConstructor);
+					}
+					// TODO(alias): the original also joins AliasQuery once aliases are ported.
+					if (constructors.size() > 1) {
+						constructor = name -> new LogicalOrQuery(constructors.stream().map(c -> c.apply(name)).toList());
+						regexConstructor = name -> new LogicalOrQuery(regexConstructors.stream().map(c -> c.apply(name)).toList());
+					}
+				}
 				addQuery(q.substring(type.prefix.length()), negated, queries, constructor, regexConstructor);
 			}
 			if (!queries.isEmpty()) {

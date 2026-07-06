@@ -15,6 +15,7 @@ import dev.emi.emi.config.HeaderType;
 import dev.emi.emi.config.IntGroup;
 import dev.emi.emi.config.Margins;
 import dev.emi.emi.config.SidebarSettings;
+import dev.emi.emi.config.SidebarSide;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiDrawContext;
 import dev.emi.emi.runtime.EmiFavorites;
@@ -112,6 +113,9 @@ public class EmiScreenManager {
 	// --- input routing (from the screen mixins) ---
 
 	public static boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		if (!EmiConfig.enabled) {
+			return false;
+		}
 		int mx = (int) event.x();
 		int my = (int) event.y();
 		if (isOverSearch(mx, my)) {
@@ -141,6 +145,9 @@ public class EmiScreenManager {
 	}
 
 	public static boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+		if (!EmiConfig.enabled) {
+			return false;
+		}
 		if (draggedStack.isEmpty() && button == 0 && !pressedStack.isEmpty()) {
 			if (client().gui.screen() instanceof AbstractContainerScreen<?> hs
 					&& !hs.getMenu().getCarried().isEmpty()) {
@@ -161,6 +168,9 @@ public class EmiScreenManager {
 	}
 
 	public static boolean mouseReleased(double mouseX, double mouseY, int button) {
+		if (!EmiConfig.enabled) {
+			return false;
+		}
 		try {
 			int mx = (int) mouseX;
 			int my = (int) mouseY;
@@ -203,6 +213,9 @@ public class EmiScreenManager {
 	}
 
 	public static boolean mouseScrolled(double mouseX, double mouseY, double verticalAmount) {
+		if (!EmiConfig.enabled) {
+			return false;
+		}
 		SidebarPanel panel = getHoveredPanel((int) mouseX, (int) mouseY);
 		if (panel != null) {
 			panel.scrollPage(verticalAmount > 0 ? -1 : 1);
@@ -235,6 +248,15 @@ public class EmiScreenManager {
 		}
 		// Never steal keys from a focused text field (e.g. the creative inventory search).
 		if (screen.getFocused() instanceof EditBox) {
+			return false;
+		}
+		// Visibility toggles even while EMI is hidden; everything else requires it shown.
+		if (EmiConfig.toggleVisibility.matchesKey(event.key(), event.scancode())) {
+			EmiConfig.enabled = !EmiConfig.enabled;
+			EmiConfig.writeConfig();
+			return true;
+		}
+		if (!EmiConfig.enabled) {
 			return false;
 		}
 		if (EmiConfig.focusSearch.matchesKey(event.key(), event.scancode())) {
@@ -420,18 +442,27 @@ public class EmiScreenManager {
 				search.setFocused(false);
 			}
 		}
+		if (!EmiConfig.enabled) {
+			return;
+		}
 		EmiDrawContext context = EmiDrawContext.wrap(graphics);
 
-		// Search bar at the bottom center of the screen (ui.center-search-bar = true).
 		if (search == null) {
 			search = new EditBox(client.font, 0, 0, SEARCH_WIDTH, 18, EmiPort.literal(""));
 			search.setMaxLength(64);
 			search.setEditable(true);
 			search.setResponder(EmiSearch::search);
 		}
-		search.setX((screenWidth - SEARCH_WIDTH) / 2);
+		// Centered at the bottom, or under the searched sidebar when ui.center-search-bar is off.
+		if (EmiConfig.centerSearchBar || indexPanel.space == null || favoritesPanel.space == null) {
+			search.setX((screenWidth - SEARCH_WIDTH) / 2);
+			search.setWidth(SEARCH_WIDTH);
+		} else {
+			ScreenSpace space = EmiConfig.searchSidebar == SidebarSide.LEFT ? favoritesPanel.space : indexPanel.space;
+			search.setX(space.tx);
+			search.setWidth(Math.max(SEARCH_WIDTH / 2, space.tw * ENTRY_SIZE));
+		}
 		search.setY(screenHeight - 21);
-		search.setWidth(SEARCH_WIDTH);
 		search.extractRenderState(graphics, mouseX, mouseY, delta);
 
 		emi.visible = EmiConfig.emiConfigButtonVisibility.resolve(true);
@@ -595,7 +626,7 @@ public class EmiScreenManager {
 			}
 
 			// Hover highlight goes under the icons, as in the original.
-			EmiIngredient hovered = getStackAt(mouseX, mouseY);
+			EmiIngredient hovered = EmiConfig.showHoverOverlay ? getStackAt(mouseX, mouseY) : null;
 			if (hovered != null && !hovered.isEmpty()) {
 				int off = space.getRawOffsetFromMouse(mouseX, mouseY);
 				context.fill(space.getRawX(off), space.getRawY(off), ENTRY_SIZE, ENTRY_SIZE, 0x80ffffff);

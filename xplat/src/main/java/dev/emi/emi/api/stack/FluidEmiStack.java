@@ -4,10 +4,16 @@ import java.util.List;
 
 import org.jetbrains.annotations.ApiStatus;
 
+import com.google.common.collect.Lists;
+
 import dev.emi.emi.EmiPort;
+import dev.emi.emi.EmiUtil;
 import dev.emi.emi.api.render.EmiRender;
+import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.platform.EmiAgnos;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -76,6 +82,17 @@ public class FluidEmiStack extends EmiStack {
 	public List<Component> getTooltipText() {
 		// TODO(render): the original returns EmiAgnos.getFluidTooltip(fluid, components) (loader metadata).
 		return List.of(getName());
+	}
+
+	@Override
+	public List<ClientTooltipComponent> getTooltip() {
+		List<ClientTooltipComponent> list = Lists.newArrayList(super.getTooltip());
+		if (EmiConfig.appendModId) {
+			String namespace = EmiPort.getFluidRegistry().getKey(fluid).getNamespace();
+			list.add(ClientTooltipComponent.create(EmiPort.ordered(
+				EmiPort.literal(EmiUtil.getModName(namespace), ChatFormatting.BLUE, ChatFormatting.ITALIC))));
+		}
+		return list;
 	}
 
 	@Override
