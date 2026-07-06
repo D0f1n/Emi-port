@@ -148,6 +148,9 @@ public class ConfigScreen extends Screen {
 		this.addRenderableWidget(EmiPort.newButton(x + w / 2 + 2, height - 30, w / 2 - 2, 20, EmiPort.translatable("gui.done"), button -> {
 			this.onClose();
 		}));
+		this.addRenderableWidget(EmiPort.newButton(x + w / 2 + 2, height - 52, w / 2 - 24, 20, EmiPort.translatable("screen.emi.presets"), button -> {
+			Minecraft.getInstance().gui.setScreen(new ConfigPresetScreen(this));
+		}));
 		emiButtons.add(new SizedButtonWidget(x + w - 20, height - 52, 20, 20, 164, 0, () -> true, widget -> {
 			EmiConfig.setGlobalState(!EmiConfig.useGlobalConfig);
 			this.init(this.width, this.height);
