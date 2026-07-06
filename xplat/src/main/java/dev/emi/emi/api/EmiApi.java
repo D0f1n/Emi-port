@@ -10,11 +10,14 @@ import com.google.common.collect.Maps;
 
 import org.jetbrains.annotations.Nullable;
 
+import dev.emi.emi.VanillaPlugin;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.EmiRecipeCategory;
 import dev.emi.emi.api.recipe.EmiRecipeManager;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
+import dev.emi.emi.api.stack.TagEmiIngredient;
+import dev.emi.emi.recipe.EmiTagRecipe;
 import dev.emi.emi.registry.EmiRecipes;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiHistory;
@@ -86,9 +89,16 @@ public class EmiApi {
 	}
 
 	public static void displayRecipes(EmiIngredient stack) {
-		// The original also resolves tag and list ingredients to synthetic recipes here; those
-		// return with the tag/ingredient categories in the polish round.
-		if (stack.getEmiStacks().size() == 1) {
+		// The original also resolves list ingredients to a synthetic recipe here; that returns
+		// with the ingredient category. TODO(polish)
+		if (stack instanceof TagEmiIngredient tag) {
+			for (EmiRecipe recipe : getRecipeManager().getRecipes(VanillaPlugin.TAG)) {
+				if (recipe instanceof EmiTagRecipe tr && tr.key.equals(tag.key)) {
+					setPages(Map.of(VanillaPlugin.TAG, List.of(recipe)), stack);
+					break;
+				}
+			}
+		} else if (stack.getEmiStacks().size() == 1) {
 			EmiStack es = stack.getEmiStacks().get(0);
 			setPages(mapRecipes(pruneSources(EmiApi.getRecipeManager().getRecipesByOutput(es), es)), stack);
 		}
