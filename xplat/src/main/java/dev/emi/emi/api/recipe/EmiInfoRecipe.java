@@ -100,7 +100,9 @@ public class EmiInfoRecipe implements EmiRecipe {
 					return;
 				}
 				FormattedCharSequence line = manager.lines.get(l);
-				context.drawText(line, 0, i * CLIENT.font.lineHeight, 0);
+				// The original passed color 0; 1.21's font renderer forced transparent colors
+				// opaque, 26.2's does not.
+				context.drawText(line, 0, i * CLIENT.font.lineHeight, 0xFF000000);
 			}
 		});
 	}
