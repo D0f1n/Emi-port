@@ -18,6 +18,7 @@ import dev.emi.emi.api.widget.Bounds;
 import dev.emi.emi.api.widget.RecipeFillButtonWidget;
 import dev.emi.emi.api.widget.SlotWidget;
 import dev.emi.emi.api.widget.Widget;
+import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.registry.EmiRecipeFiller;
 import dev.emi.emi.runtime.EmiDrawContext;
 import dev.emi.emi.runtime.EmiHistory;
@@ -517,8 +518,11 @@ public class RecipeScreen extends Screen {
 		} else if (minecraft.options.keyInventory.matches(event)) {
 			this.onClose();
 			return true;
-		} else if (event.key() == 259) { // GLFW_KEY_BACKSPACE — navigate back through history
+		} else if (EmiConfig.back.matchesKey(event.key(), event.scancode())) {
 			EmiHistory.pop();
+			return true;
+		} else if (EmiConfig.forward.matchesKey(event.key(), event.scancode())) {
+			EmiHistory.forward();
 			return true;
 		}
 		if (event.key() == 263) { // GLFW_KEY_LEFT

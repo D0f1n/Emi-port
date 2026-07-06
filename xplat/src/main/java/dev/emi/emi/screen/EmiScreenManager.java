@@ -10,6 +10,11 @@ import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.widget.Bounds;
+import dev.emi.emi.config.EmiConfig;
+import dev.emi.emi.config.HeaderType;
+import dev.emi.emi.config.IntGroup;
+import dev.emi.emi.config.Margins;
+import dev.emi.emi.config.SidebarSettings;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiDrawContext;
 import dev.emi.emi.runtime.EmiFavorites;
@@ -37,14 +42,10 @@ import net.minecraft.network.chat.Component;
 public class EmiScreenManager {
 	private static final int PADDING_SIZE = 1;
 	static final int ENTRY_SIZE = 16 + PADDING_SIZE * 2;
-	// EMI 1.21.1 sidebar defaults, inlined. TODO(polish): config
-	private static final int MAX_COLUMNS = 12; // ui.right/left-sidebar-size columns
-	private static final int MAX_ROWS = 100; // ui.right/left-sidebar-size rows
-	private static final int MARGIN = 2; // ui.right/left-sidebar-margins, all sides
-	private static final int HEADER_OFFSET = 18; // ui.right/left-sidebar-header = VISIBLE
+	/** Header height when the sidebar header is visible; layout skips it when configured INVISIBLE. */
+	private static final int HEADER_OFFSET = 18;
 	// Theme TRANSPARENT: no background, zero padding. TODO(polish): VANILLA/MODERN themes
 	private static final int SEARCH_WIDTH = 160; // centered search bar width (ui.center-search-bar = true)
-	private static final int FAVORITE_KEY = 65; // GLFW_KEY_A, the original's default bind. TODO(config)
 
 	/** The stacks currently shown (filtered by search); defaults to the whole index. */
 	public static List<? extends EmiIngredient> searchedStacks = List.of();
@@ -109,7 +110,8 @@ public class EmiScreenManager {
 			return true;
 		}
 		for (SidebarPanel panel : panels) {
-			if (panel.pageLeft.mouseClicked(mx, my, event.button()) || panel.pageRight.mouseClicked(mx, my, event.button())) {
+			if (panel.headerVisible()
+					&& (panel.pageLeft.mouseClicked(mx, my, event.button()) || panel.pageRight.mouseClicked(mx, my, event.button()))) {
 				return true;
 			}
 		}
@@ -171,10 +173,10 @@ public class EmiScreenManager {
 				} else {
 					EmiIngredient stack = getStackAt(mx, my);
 					if (stack != null && !stack.isEmpty()) {
-						if (button == 0) {
+						if (EmiConfig.viewRecipes.matchesMouse(button)) {
 							EmiApi.displayRecipes(stack);
 							return true;
-						} else if (button == 1) {
+						} else if (EmiConfig.viewUses.matchesMouse(button)) {
 							EmiApi.displayUses(stack);
 							return true;
 						}
@@ -210,14 +212,11 @@ public class EmiScreenManager {
 	}
 
 	/**
-	 * The original's favorite keybind (default A): toggles the hovered stack as a favorite, with the
-	 * recipe context on recipe screen slots. Called from the keyboard dispatch mixin when the search
-	 * is not focused, and only handles the event when an EMI stack is actually hovered.
+	 * EMI's config-driven keybinds (favorite, view recipes/uses, focus/clear search). Called from the
+	 * keyboard dispatch mixin when the search is not focused. The bind modifier state is matched by
+	 * {@link dev.emi.emi.input.EmiBind EmiBind} itself.
 	 */
-	public static boolean handleFavoriteKey(KeyEvent event) {
-		if (event.key() != FAVORITE_KEY || (event.modifiers() & 0x7) != 0) {
-			return false;
-		}
+	public static boolean handleInput(KeyEvent event) {
 		Screen screen = client().gui.screen();
 		if (!(screen instanceof AbstractContainerScreen<?>) && !(screen instanceof RecipeScreen)) {
 			return false;
@@ -226,6 +225,25 @@ public class EmiScreenManager {
 		if (screen.getFocused() instanceof EditBox) {
 			return false;
 		}
+		if (EmiConfig.focusSearch.matchesKey(event.key(), event.scancode())) {
+			if (search != null) {
+				search.setFocused(true);
+				return true;
+			}
+			return false;
+		}
+		if (EmiConfig.clearSearch.matchesKey(event.key(), event.scancode())) {
+			if (search != null) {
+				search.setValue("");
+				return true;
+			}
+			return false;
+		}
+		return stackInteraction(event, screen);
+	}
+
+	/** Binds that act on the hovered stack: favorite (with recipe context), view recipes, view uses. */
+	private static boolean stackInteraction(KeyEvent event, Screen screen) {
 		EmiIngredient hovered = getStackAt(lastMouseX, lastMouseY);
 		EmiRecipe context = EmiApi.getRecipeContext(hovered);
 		if ((hovered == null || hovered.isEmpty()) && screen instanceof RecipeScreen rs) {
@@ -235,9 +253,20 @@ public class EmiScreenManager {
 		if (hovered == null || hovered.isEmpty()) {
 			return false;
 		}
-		EmiFavorites.addFavorite(hovered, context);
-		favoritesPanel.wrapPage();
-		return true;
+		if (EmiConfig.favorite.matchesKey(event.key(), event.scancode())) {
+			EmiFavorites.addFavorite(hovered, context);
+			favoritesPanel.wrapPage();
+			return true;
+		}
+		if (EmiConfig.viewRecipes.matchesKey(event.key(), event.scancode())) {
+			EmiApi.displayRecipes(hovered);
+			return true;
+		}
+		if (EmiConfig.viewUses.matchesKey(event.key(), event.scancode())) {
+			EmiApi.displayUses(hovered);
+			return true;
+		}
+		return false;
 	}
 
 	public static boolean charTyped(CharacterEvent event) {
@@ -290,10 +319,17 @@ public class EmiScreenManager {
 	}
 
 	private static ScreenSpace createSpace(Bounds bounds, List<Bounds> exclusion, boolean rtl) {
+		// The right sidebar is the index, the left one is favorites — same fixed pairing the panels use.
+		SidebarSettings settings = rtl ? SidebarSettings.RIGHT : SidebarSettings.LEFT;
+		IntGroup size = settings.size();
+		Margins margins = settings.margins();
+		int maxColumns = size.values.getInt(0);
+		int maxRows = size.values.getInt(1);
+		int headerOffset = settings.header() == HeaderType.VISIBLE ? HEADER_OFFSET : 0;
 		// Try a more optimistic approach to position the bounding box slightly more
 		// pleasantly if applicable
-		int idealWidth = Math.min(MAX_COLUMNS * ENTRY_SIZE + MARGIN * 2, bounds.width());
-		int idealHeight = Math.min(MAX_ROWS * ENTRY_SIZE + MARGIN * 2 + HEADER_OFFSET, bounds.height());
+		int idealWidth = Math.min(maxColumns * ENTRY_SIZE + margins.left() + margins.right(), bounds.width());
+		int idealHeight = Math.min(maxRows * ENTRY_SIZE + margins.top() + margins.bottom() + headerOffset, bounds.height());
 		// The original keys both axes of the ideal box off the horizontal alignment
 		int idealX = rtl ? bounds.right() - idealWidth : bounds.left();
 		int idealY = rtl ? bounds.bottom() - idealHeight : bounds.top();
@@ -306,16 +342,16 @@ public class EmiScreenManager {
 			bounds = idealBounds;
 		}
 
-		int xMin = bounds.left() + MARGIN;
-		int xMax = bounds.right() - MARGIN;
-		int yMin = bounds.top() + MARGIN;
-		int yMax = bounds.bottom() - MARGIN;
+		int xMin = bounds.left() + margins.left();
+		int xMax = bounds.right() - margins.right();
+		int yMin = bounds.top() + margins.top();
+		int yMax = bounds.bottom() - margins.bottom();
 		int xSpan = xMax - xMin;
 		int ySpan = yMax - yMin;
-		int tw = Math.max(0, Math.min(xSpan / ENTRY_SIZE, MAX_COLUMNS));
-		int th = Math.max(0, Math.min((ySpan - HEADER_OFFSET) / ENTRY_SIZE, MAX_ROWS));
+		int tw = Math.max(0, Math.min(xSpan / ENTRY_SIZE, maxColumns));
+		int th = Math.max(0, Math.min((ySpan - headerOffset) / ENTRY_SIZE, maxRows));
 		int tx = rtl ? xMax - tw * ENTRY_SIZE : xMin; // align RIGHT for the index, LEFT for favorites
-		int ty = yMin + HEADER_OFFSET; // align TOP
+		int ty = yMin + headerOffset; // align TOP
 		return new ScreenSpace(tx, ty, tw, th, rtl, exclusion);
 	}
 
@@ -481,6 +517,10 @@ public class EmiScreenManager {
 			return space != null && stacks().size() > space.pageSize;
 		}
 
+		boolean headerVisible() {
+			return (rtl ? SidebarSettings.RIGHT : SidebarSettings.LEFT).header() == HeaderType.VISIBLE;
+		}
+
 		int totalPages() {
 			if (space == null || space.pageSize <= 0) {
 				return 1;
@@ -527,13 +567,15 @@ public class EmiScreenManager {
 			wrapPage();
 
 			// Panel header: page-turn arrows, page count, scroll indicator.
-			pageLeft.x = space.tx;
-			pageLeft.y = space.ty - 18;
-			pageRight.x = space.tx + space.tw * ENTRY_SIZE - 16;
-			pageRight.y = pageLeft.y;
-			pageLeft.render(context, mouseX, mouseY, delta);
-			pageRight.render(context, mouseX, mouseY, delta);
-			drawHeader(context);
+			if (headerVisible()) {
+				pageLeft.x = space.tx;
+				pageLeft.y = space.ty - 18;
+				pageRight.x = space.tx + space.tw * ENTRY_SIZE - 16;
+				pageRight.y = pageLeft.y;
+				pageLeft.render(context, mouseX, mouseY, delta);
+				pageRight.render(context, mouseX, mouseY, delta);
+				drawHeader(context);
+			}
 
 			// Hover highlight goes under the icons, as in the original.
 			EmiIngredient hovered = getStackAt(mouseX, mouseY);

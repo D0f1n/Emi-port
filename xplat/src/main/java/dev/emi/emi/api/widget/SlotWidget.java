@@ -12,6 +12,7 @@ import dev.emi.emi.api.EmiApi;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.render.EmiRender;
 import dev.emi.emi.api.stack.EmiIngredient;
+import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.runtime.EmiDrawContext;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -217,10 +218,10 @@ public class SlotWidget extends Widget {
 		if (getStack().isEmpty()) {
 			return false;
 		}
-		if (button == 0) {
+		if (EmiConfig.viewRecipes.matchesMouse(button)) {
 			EmiApi.displayRecipes(getStack());
 			return true;
-		} else if (button == 1) {
+		} else if (EmiConfig.viewUses.matchesMouse(button)) {
 			EmiApi.displayUses(getStack());
 			return true;
 		}

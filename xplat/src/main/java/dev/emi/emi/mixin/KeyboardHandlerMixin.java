@@ -31,7 +31,7 @@ public abstract class KeyboardHandlerMixin {
 			}
 			// Suppress all vanilla key handling (key bindings, screen shortcuts) while typing in search.
 			ci.cancel();
-		} else if (action == 1 && EmiScreenManager.handleFavoriteKey(event)) { // GLFW_PRESS only
+		} else if (action == 1 && EmiScreenManager.handleInput(event)) { // GLFW_PRESS only
 			ci.cancel();
 		}
 	}
