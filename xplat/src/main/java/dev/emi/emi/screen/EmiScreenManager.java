@@ -5,6 +5,7 @@ import java.util.List;
 import dev.emi.emi.EmiPort;
 import dev.emi.emi.EmiRenderHelper;
 import dev.emi.emi.api.EmiApi;
+import dev.emi.emi.api.recipe.EmiPlayerInventory;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
@@ -69,6 +70,8 @@ public class EmiScreenManager {
 	private static final List<SidebarPanel> panels = List.of(leftPanel, rightPanel);
 	private static int lastWidth, lastHeight, lastGuiLeft, lastGuiRight;
 	private static int lastMouseX, lastMouseY;
+	private static long lastPlayerInventorySync = 0;
+	public static EmiPlayerInventory lastPlayerInventory;
 
 	/** EMI's search bar — a vanilla EditBox owned and driven by the manager (not a screen child). */
 	public static EditBox search;
@@ -389,6 +392,29 @@ public class EmiScreenManager {
 		}
 	}
 
+	private static void updateCraftables() {
+		int minDelay = 400;
+		if (hasSidebarVisible(SidebarType.CRAFTABLES)) {
+			minDelay = 50;
+		}
+		if (lastPlayerInventory == null || Math.abs(System.currentTimeMillis() - lastPlayerInventorySync) >= minDelay) {
+			lastPlayerInventorySync = System.currentTimeMillis();
+			EmiPlayerInventory inv = EmiPlayerInventory.of(client().player);
+			SidebarPanel searchPanel = getSearchPanel();
+			if (!inv.isEqual(lastPlayerInventory)) {
+				lastPlayerInventory = inv;
+				EmiSidebars.craftables = lastPlayerInventory.getCraftables();
+				// The original repopulates the search space's batcher and calls EmiSearch.update();
+				// the port's synchronous equivalent is re-running the current query.
+				if (searchPanel != null && searchPanel.getType() == SidebarType.CRAFTABLES && search != null) {
+					EmiSearch.search(search.getValue());
+				}
+				EmiFavorites.updateSynthetic();
+				repopulatePanels(SidebarType.CRAFTABLES);
+			}
+		}
+	}
+
 	public static void updateSearchSidebar() {
 		if (search == null) {
 			return;
@@ -525,6 +551,7 @@ public class EmiScreenManager {
 		if (!EmiConfig.enabled) {
 			return;
 		}
+		updateCraftables();
 		EmiDrawContext context = EmiDrawContext.wrap(graphics);
 
 		if (search == null) {
