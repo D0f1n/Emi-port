@@ -21,6 +21,7 @@ import dev.emi.emi.api.recipe.EmiRecipeCategory;
 import dev.emi.emi.api.recipe.EmiRecipeSorting;
 import dev.emi.emi.api.recipe.EmiWorldInteractionRecipe;
 import dev.emi.emi.api.render.EmiTexture;
+import dev.emi.emi.api.stack.Comparison;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.stack.TagEmiIngredient;
@@ -191,6 +192,14 @@ public class VanillaPlugin implements EmiPlugin {
 		registry.addRecipeHandler(MenuType.BLAST_FURNACE, new CookingRecipeHandler<BlastFurnaceMenu>(BLASTING));
 		registry.addRecipeHandler(MenuType.SMOKER, new CookingRecipeHandler<SmokerMenu>(SMOKING));
 		registry.addRecipeHandler(MenuType.STONECUTTER, new StonecuttingRecipeHandler());
+
+		Comparison potionComparison = Comparison.compareData(stack -> stack.get(DataComponents.POTION_CONTENTS));
+
+		registry.setDefaultComparison(Items.POTION, potionComparison);
+		registry.setDefaultComparison(Items.SPLASH_POTION, potionComparison);
+		registry.setDefaultComparison(Items.LINGERING_POTION, potionComparison);
+		registry.setDefaultComparison(Items.TIPPED_ARROW, potionComparison);
+		registry.setDefaultComparison(Items.ENCHANTED_BOOK, EmiPort.compareStrict());
 
 		for (HarvestedRecipe entry : EmiRecipeSource.recipes) {
 			try {

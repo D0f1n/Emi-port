@@ -1,5 +1,6 @@
 package dev.emi.emi.runtime;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -19,6 +20,7 @@ import dev.emi.emi.api.stack.ItemEmiStack;
 import dev.emi.emi.api.stack.ListEmiIngredient;
 import dev.emi.emi.api.stack.TagEmiIngredient;
 import dev.emi.emi.api.stack.serializer.EmiIngredientSerializer;
+import dev.emi.emi.registry.EmiComparisonDefaults;
 import dev.emi.emi.registry.EmiIngredientSerializers;
 import dev.emi.emi.registry.EmiRecipeFiller;
 import dev.emi.emi.registry.EmiRecipeSource;
@@ -112,6 +114,7 @@ public class EmiReload {
 		EmiRecipeFiller.clear();
 		EmiRecipeSource.clear();
 		EmiRecipeSource.harvest();
+		EmiComparisonDefaults.comparisons = new HashMap<>();
 		EmiRegistryImpl registry = new EmiRegistryImpl();
 		for (EmiPlugin plugin : plugins()) {
 			try {
