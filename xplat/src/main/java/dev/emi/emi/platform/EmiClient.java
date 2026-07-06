@@ -9,6 +9,7 @@ import java.util.function.Consumer;
 import com.google.common.collect.Maps;
 
 import dev.emi.emi.api.recipe.EmiRecipe;
+import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.api.recipe.handler.StandardRecipeHandler;
 import dev.emi.emi.network.EmiNetwork;
 import dev.emi.emi.network.FillRecipeC2SPacket;
@@ -31,6 +32,7 @@ public class EmiClient {
 	public static final Map<Consumer<UseOnContext>, List<ItemLike>> HOE_ACTIONS = Maps.newHashMap();
 
 	public static void init() {
+		EmiConfig.loadConfig();
 		LOGGER.log(Level.INFO, "EMI 26.2 port skeleton: client init");
 	}
 

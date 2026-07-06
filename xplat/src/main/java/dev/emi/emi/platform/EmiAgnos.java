@@ -23,6 +23,18 @@ import net.minecraft.world.level.material.Fluid;
 public abstract class EmiAgnos {
 	public static EmiAgnos delegate;
 
+	public static java.nio.file.Path getConfigDirectory() {
+		return delegate.getConfigDirectoryAgnos();
+	}
+
+	protected abstract java.nio.file.Path getConfigDirectoryAgnos();
+
+	public static boolean isDevelopmentEnvironment() {
+		return delegate != null && delegate.isDevelopmentEnvironmentAgnos();
+	}
+
+	protected abstract boolean isDevelopmentEnvironmentAgnos();
+
 	static {
 		try {
 			Class.forName("dev.emi.emi.platform.fabric.EmiAgnosFabric");

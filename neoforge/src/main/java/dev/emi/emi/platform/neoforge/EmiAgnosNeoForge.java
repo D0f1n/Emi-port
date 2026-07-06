@@ -32,6 +32,16 @@ public class EmiAgnosNeoForge extends EmiAgnos {
 	}
 
 	@Override
+	protected java.nio.file.Path getConfigDirectoryAgnos() {
+		return net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get();
+	}
+
+	@Override
+	protected boolean isDevelopmentEnvironmentAgnos() {
+		return !net.neoforged.fml.loading.FMLEnvironment.isProduction();
+	}
+
+	@Override
 	protected boolean isModLoadedAgnos(String id) {
 		return ModList.get().isLoaded(id);
 	}

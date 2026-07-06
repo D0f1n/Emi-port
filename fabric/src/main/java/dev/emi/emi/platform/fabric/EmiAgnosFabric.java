@@ -35,6 +35,16 @@ public class EmiAgnosFabric extends EmiAgnos {
 	}
 
 	@Override
+	protected java.nio.file.Path getConfigDirectoryAgnos() {
+		return FabricLoader.getInstance().getConfigDir();
+	}
+
+	@Override
+	protected boolean isDevelopmentEnvironmentAgnos() {
+		return FabricLoader.getInstance().isDevelopmentEnvironment();
+	}
+
+	@Override
 	protected boolean isModLoadedAgnos(String id) {
 		return FabricLoader.getInstance().isModLoaded(id);
 	}
