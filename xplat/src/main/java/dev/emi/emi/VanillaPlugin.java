@@ -28,6 +28,7 @@ import dev.emi.emi.api.widget.GeneratedSlotWidget;
 import dev.emi.emi.handler.CookingRecipeHandler;
 import dev.emi.emi.handler.CraftingRecipeHandler;
 import dev.emi.emi.handler.InventoryRecipeHandler;
+import dev.emi.emi.handler.StonecuttingRecipeHandler;
 import dev.emi.emi.mixin.accessor.AxeItemAccessor;
 import dev.emi.emi.mixin.accessor.HoeItemAccessor;
 import dev.emi.emi.mixin.accessor.PotionBrewingAccessor;
@@ -189,6 +190,7 @@ public class VanillaPlugin implements EmiPlugin {
 		registry.addRecipeHandler(MenuType.FURNACE, new CookingRecipeHandler<FurnaceMenu>(SMELTING));
 		registry.addRecipeHandler(MenuType.BLAST_FURNACE, new CookingRecipeHandler<BlastFurnaceMenu>(BLASTING));
 		registry.addRecipeHandler(MenuType.SMOKER, new CookingRecipeHandler<SmokerMenu>(SMOKING));
+		registry.addRecipeHandler(MenuType.STONECUTTER, new StonecuttingRecipeHandler());
 
 		for (HarvestedRecipe entry : EmiRecipeSource.recipes) {
 			try {
