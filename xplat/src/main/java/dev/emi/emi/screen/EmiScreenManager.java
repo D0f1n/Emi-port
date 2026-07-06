@@ -1,7 +1,6 @@
 package dev.emi.emi.screen;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 import dev.emi.emi.EmiPort;
 import dev.emi.emi.EmiRenderHelper;
@@ -14,11 +13,14 @@ import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.config.HeaderType;
 import dev.emi.emi.config.IntGroup;
 import dev.emi.emi.config.Margins;
+import dev.emi.emi.config.SidebarPages;
 import dev.emi.emi.config.SidebarSettings;
 import dev.emi.emi.config.SidebarSide;
+import dev.emi.emi.config.SidebarType;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiDrawContext;
 import dev.emi.emi.runtime.EmiFavorites;
+import dev.emi.emi.runtime.EmiSidebars;
 import dev.emi.emi.screen.widget.SizedButtonWidget;
 import dev.emi.emi.search.EmiSearch;
 import net.minecraft.client.Minecraft;
@@ -34,11 +36,11 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
 /**
- * The EMI overlay core: the right index panel, the left favorites panel and the search bar.
- * Reproduces the original's {@code ScreenSpace} layout math with EMI 1.21.1 config defaults inlined
- * (right sidebar pages INDEX, left sidebar pages FAVORITES), without the 4-panel sidebar-page cycling
- * machinery. Driven from {@code ScreenMixin} for container screens and directly from
- * {@link RecipeScreen}.
+ * The EMI overlay core: the left and right sidebar panels and the search bar. Each panel cycles
+ * through the {@link SidebarType} pages configured by the sidebar-pages config options, routing its
+ * content through {@link EmiSidebars}; the search panel (per {@code ui.search-sidebar}) shows the
+ * searched subset of its current page. Driven from {@code ScreenMixin} for container screens and
+ * directly from {@link RecipeScreen}.
  */
 public class EmiScreenManager {
 	private static final int PADDING_SIZE = 1;
@@ -56,11 +58,14 @@ public class EmiScreenManager {
 	/** The stack being dragged (set once the cursor leaves the pressed stack with the button held). */
 	public static EmiIngredient draggedStack = EmiStack.EMPTY;
 
-	/** Right sidebar: the searchable index, filled right-to-left like the original. */
-	private static final SidebarPanel indexPanel = new SidebarPanel(true, EmiScreenManager::stacks);
-	/** Left sidebar: favorites, filled left-to-right like the original. */
-	private static final SidebarPanel favoritesPanel = new SidebarPanel(false, () -> EmiFavorites.favoriteSidebar);
-	private static final List<SidebarPanel> panels = List.of(indexPanel, favoritesPanel);
+	/**
+	 * The sidebar panels, their pages driven by the sidebar-pages config (left defaults to
+	 * FAVORITES, right to INDEX and CRAFTABLES, as the original). The original also lays out
+	 * top/bottom panels; their config parses but has no panel until a later round. TODO(polish)
+	 */
+	private static final SidebarPanel leftPanel = new SidebarPanel(SidebarSide.LEFT, EmiConfig.leftSidebarPages);
+	private static final SidebarPanel rightPanel = new SidebarPanel(SidebarSide.RIGHT, EmiConfig.rightSidebarPages);
+	private static final List<SidebarPanel> panels = List.of(leftPanel, rightPanel);
 	private static int lastWidth, lastHeight, lastGuiLeft, lastGuiRight;
 	private static int lastMouseX, lastMouseY;
 
@@ -79,7 +84,10 @@ public class EmiScreenManager {
 
 	public static void setSearchedStacks(List<? extends EmiIngredient> stacks) {
 		searchedStacks = stacks;
-		indexPanel.page = 0;
+		SidebarPanel panel = getSearchPanel();
+		if (panel != null) {
+			panel.page = 0;
+		}
 	}
 
 	public static boolean isSearchFocused() {
@@ -120,6 +128,7 @@ public class EmiScreenManager {
 		int my = (int) event.y();
 		if (isOverSearch(mx, my)) {
 			search.setFocused(true);
+			updateSearchSidebar();
 			return true;
 		}
 		if (emi.mouseClicked(mx, my, event.button())) {
@@ -177,7 +186,7 @@ public class EmiScreenManager {
 			if (!pressedStack.isEmpty()) {
 				if (!draggedStack.isEmpty()) {
 					SidebarPanel panel = getHoveredPanel(mx, my);
-					if (panel == favoritesPanel && panel.space != null) {
+					if (panel != null && panel.getType() == SidebarType.FAVORITES && panel.space != null) {
 						ScreenSpace space = panel.space;
 						int page = panel.page;
 						int pageSize = space.pageSize;
@@ -228,6 +237,7 @@ public class EmiScreenManager {
 		if (isSearchFocused()) {
 			if (event.key() == 256) { // GLFW_KEY_ESCAPE — release focus instead of trapping the user
 				search.setFocused(false);
+				updateSearchSidebar();
 				return true;
 			}
 			search.keyPressed(event);
@@ -262,6 +272,7 @@ public class EmiScreenManager {
 		if (EmiConfig.focusSearch.matchesKey(event.key(), event.scancode())) {
 			if (search != null) {
 				search.setFocused(true);
+				updateSearchSidebar();
 				return true;
 			}
 			return false;
@@ -289,7 +300,7 @@ public class EmiScreenManager {
 		}
 		if (EmiConfig.favorite.matchesKey(event.key(), event.scancode())) {
 			EmiFavorites.addFavorite(hovered, context);
-			favoritesPanel.wrapPage();
+			repopulatePanels(SidebarType.FAVORITES);
 			return true;
 		}
 		if (EmiConfig.viewRecipes.matchesKey(event.key(), event.scancode())) {
@@ -311,13 +322,80 @@ public class EmiScreenManager {
 	}
 
 	public static List<? extends EmiIngredient> getSearchSource() {
-		return EmiStackList.stacks;
+		SidebarPanel search = getSearchPanel();
+		if (search == null) {
+			return List.of();
+		}
+		return EmiSidebars.getStacks(search.getType());
 	}
 
-	private static List<? extends EmiIngredient> stacks() {
-		// Returned as-is: an empty result from a non-matching query must show an empty grid (not the full
-		// list). The full list is seeded into searchedStacks on world join by reset().
-		return searchedStacks;
+	public static SidebarPanel getSearchPanel() {
+		for (SidebarPanel panel : panels) {
+			if (panel.isSearch()) {
+				return panel;
+			}
+		}
+		return null;
+	}
+
+	public static void focusSearchSidebarType(SidebarType type) {
+		SidebarPanel search = getSearchPanel();
+		if (search != null && search.supportsType(type)) {
+			search.setType(type);
+		}
+	}
+
+	public static void focusSidebarType(SidebarType type) {
+		for (SidebarPanel panel : panels) {
+			if (panel.supportsType(type)) {
+				panel.setType(type);
+			}
+		}
+	}
+
+	public static void toggleSidebarType(SidebarType type) {
+		boolean visible = false;
+		for (SidebarPanel panel : panels) {
+			if (panel.getType() == type) {
+				visible = true;
+				panel.cycleType(1);
+			}
+		}
+		if (!visible) {
+			focusSidebarType(type);
+		}
+	}
+
+	public static boolean hasSidebarVisible(SidebarType type) {
+		for (SidebarPanel panel : panels) {
+			if (panel.space != null && panel.getType() == type) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * The original repopulates the stack batchers of every space showing the type; the port draws
+	 * grids immediate-mode, so re-clamping the scroll page is all a content change needs.
+	 */
+	public static void repopulatePanels(SidebarType type) {
+		for (SidebarPanel panel : panels) {
+			if (panel.getType() == type) {
+				panel.wrapPage();
+			}
+		}
+	}
+
+	public static void updateSearchSidebar() {
+		if (search == null) {
+			return;
+		}
+		if (search.isFocused() || !search.getValue().isEmpty()) {
+			focusSearchSidebarType(EmiConfig.searchSidebarFocus);
+		} else {
+			focusSearchSidebarType(EmiConfig.emptySearchSidebarFocus);
+		}
 	}
 
 	/**
@@ -329,7 +407,7 @@ public class EmiScreenManager {
 		Minecraft client = Minecraft.getInstance();
 		int screenWidth = client.getWindow().getGuiScaledWidth();
 		int screenHeight = client.getWindow().getGuiScaledHeight();
-		if (indexPanel.space != null && favoritesPanel.space != null && lastWidth == screenWidth
+		if (rightPanel.space != null && leftPanel.space != null && lastWidth == screenWidth
 				&& lastHeight == screenHeight && lastGuiLeft == guiLeft && lastGuiRight == guiRight) {
 			return;
 		}
@@ -342,10 +420,10 @@ public class EmiScreenManager {
 		List<Bounds> exclusion = List.of();
 
 		int right = Math.min(screenWidth - ENTRY_SIZE * 2, guiRight);
-		indexPanel.space = createSpace(new Bounds(right, 0, screenWidth - right, screenHeight), exclusion, true);
+		rightPanel.space = createSpace(new Bounds(right, 0, screenWidth - right, screenHeight), exclusion, true);
 
 		int left = Math.max(ENTRY_SIZE * 2, guiLeft);
-		favoritesPanel.space = createSpace(new Bounds(0, 0, left, screenHeight), exclusion, false);
+		leftPanel.space = createSpace(new Bounds(0, 0, left, screenHeight), exclusion, false);
 
 		for (SidebarPanel panel : panels) {
 			panel.wrapPage();
@@ -451,14 +529,18 @@ public class EmiScreenManager {
 			search = new EditBox(client.font, 0, 0, SEARCH_WIDTH, 18, EmiPort.literal(""));
 			search.setMaxLength(64);
 			search.setEditable(true);
-			search.setResponder(EmiSearch::search);
+			search.setResponder(s -> {
+				updateSearchSidebar();
+				EmiSearch.search(s);
+			});
 		}
 		// Centered at the bottom, or under the searched sidebar when ui.center-search-bar is off.
-		if (EmiConfig.centerSearchBar || indexPanel.space == null || favoritesPanel.space == null) {
+		SidebarPanel searchPanel = getSearchPanel();
+		if (EmiConfig.centerSearchBar || searchPanel == null || searchPanel.space == null) {
 			search.setX((screenWidth - SEARCH_WIDTH) / 2);
 			search.setWidth(SEARCH_WIDTH);
 		} else {
-			ScreenSpace space = EmiConfig.searchSidebar == SidebarSide.LEFT ? favoritesPanel.space : indexPanel.space;
+			ScreenSpace space = searchPanel.space;
 			search.setX(space.tx);
 			search.setWidth(Math.max(SEARCH_WIDTH / 2, space.tw * ENTRY_SIZE));
 		}
@@ -493,7 +575,7 @@ public class EmiScreenManager {
 			return;
 		}
 		SidebarPanel panel = getHoveredPanel(mouseX, mouseY);
-		if (panel == favoritesPanel && panel.space != null) {
+		if (panel != null && panel.getType() == SidebarType.FAVORITES && panel.space != null) {
 			ScreenSpace space = panel.space;
 			int pageSize = space.pageSize;
 			int page = panel.page;
@@ -515,7 +597,8 @@ public class EmiScreenManager {
 
 	private static SidebarPanel getHoveredPanel(int mouseX, int mouseY) {
 		for (SidebarPanel panel : panels) {
-			if (panel.space != null && panel.space.pageSize > 0 && panel.space.contains(mouseX, mouseY)) {
+			if (!panel.hidden() && panel.space != null && panel.space.pageSize > 0
+					&& panel.space.contains(mouseX, mouseY)) {
 				return panel;
 			}
 		}
@@ -540,25 +623,87 @@ public class EmiScreenManager {
 	}
 
 	/**
-	 * One sidebar: a laid-out {@link ScreenSpace}, its page state and header widgets — the original's
-	 * {@code SidebarPanel}, fixed to a single sidebar page (INDEX on the right, FAVORITES on the left).
+	 * One sidebar: a laid-out {@link ScreenSpace}, its sidebar pages (cycled through by
+	 * {@link #cycleType}), scroll-page state and header widgets — the original's
+	 * {@code SidebarPanel} without the subpanel spaces. TODO(polish)
 	 */
 	private static class SidebarPanel {
+		final SidebarSide side;
+		final SidebarPages pages;
 		final boolean rtl;
-		final Supplier<List<? extends EmiIngredient>> source;
 		final SizedButtonWidget pageLeft, pageRight;
 		ScreenSpace space;
+		int sidebarPage;
 		int page;
 
-		SidebarPanel(boolean rtl, Supplier<List<? extends EmiIngredient>> source) {
-			this.rtl = rtl;
-			this.source = source;
+		SidebarPanel(SidebarSide side, SidebarPages pages) {
+			this.side = side;
+			this.pages = pages;
+			this.rtl = side == SidebarSide.RIGHT;
 			this.pageLeft = new SizedButtonWidget(0, 0, 16, 16, 224, 0, this::hasMultiplePages, w -> scrollPage(-1));
 			this.pageRight = new SizedButtonWidget(0, 0, 16, 16, 240, 0, this::hasMultiplePages, w -> scrollPage(1));
 		}
 
+		SidebarType getType() {
+			if (sidebarPage >= 0 && sidebarPage < pages.pages.size()) {
+				return pages.pages.get(sidebarPage).type;
+			}
+			return SidebarType.NONE;
+		}
+
+		boolean supportsType(SidebarType type) {
+			for (SidebarPages.SidebarPage page : pages.pages) {
+				if (page.type == type) {
+					return true;
+				}
+			}
+			return false;
+		}
+
+		void setSidebarPage(int page) {
+			if (page == sidebarPage) {
+				return;
+			}
+			this.sidebarPage = page;
+			// The original recalculates for CHESS and repopulates the space's batcher; the port's
+			// grids re-read stacks() every frame, so re-running the search is all that is left.
+			if (isSearch() && search != null) {
+				EmiSearch.search(search.getValue());
+			}
+		}
+
+		void setType(SidebarType type) {
+			for (int i = 0; i < pages.pages.size(); i++) {
+				SidebarPages.SidebarPage page = pages.pages.get(i);
+				if (page.type == type) {
+					setSidebarPage(i);
+				}
+			}
+		}
+
+		void cycleType(int amount) {
+			int page = sidebarPage + amount;
+			if (page >= pages.pages.size()) {
+				page = 0;
+			} else if (page < 0) {
+				page = Math.max(pages.pages.size() - 1, 0);
+			}
+			setSidebarPage(page);
+		}
+
+		boolean isSearch() {
+			return side == EmiConfig.searchSidebar;
+		}
+
+		boolean hidden() {
+			return pages.pages.isEmpty();
+		}
+
 		List<? extends EmiIngredient> stacks() {
-			return source.get();
+			if (isSearch()) {
+				return searchedStacks;
+			}
+			return EmiSidebars.getStacks(getType());
 		}
 
 		boolean hasMultiplePages() {
@@ -566,7 +711,7 @@ public class EmiScreenManager {
 		}
 
 		boolean headerVisible() {
-			return (rtl ? SidebarSettings.RIGHT : SidebarSettings.LEFT).header() == HeaderType.VISIBLE;
+			return pages.settings.header() == HeaderType.VISIBLE;
 		}
 
 		int totalPages() {
@@ -608,9 +753,10 @@ public class EmiScreenManager {
 		}
 
 		void render(EmiDrawContext context, GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
-			if (space == null || space.pageSize <= 0) {
+			if (hidden() || space == null || space.pageSize <= 0) {
 				return;
 			}
+			cycleType(0); // clamp the sidebar page when the config shrank, as the original
 			List<? extends EmiIngredient> stacks = stacks();
 			wrapPage();
 
