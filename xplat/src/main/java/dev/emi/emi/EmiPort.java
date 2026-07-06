@@ -22,6 +22,7 @@ import net.minecraft.world.item.crafting.display.SlotDisplay;
 import net.minecraft.world.item.crafting.display.SlotDisplayContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.TallFlowerBlock;
 import net.minecraft.world.level.material.Fluid;
 
 import dev.emi.emi.api.stack.Comparison;
@@ -167,6 +168,15 @@ public final class EmiPort {
 		} catch (Exception e) {
 			EmiLog.warn("Failed to resolve slot display " + display, e);
 			return EmiStack.EMPTY;
+		}
+	}
+
+	public static boolean canTallFlowerDuplicate(TallFlowerBlock tallFlowerBlock) {
+		try {
+			return tallFlowerBlock.isValidBonemealTarget(null, null, null)
+				&& tallFlowerBlock.isBonemealSuccess(null, null, null, null);
+		} catch (Exception e) {
+			return false;
 		}
 	}
 }

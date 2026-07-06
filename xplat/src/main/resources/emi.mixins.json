@@ -9,9 +9,13 @@
     "AbstractContainerScreenInputMixin",
     "ScreenMixin",
     "KeyboardHandlerMixin",
+    "HoeItemMixin",
     "accessor.AbstractContainerScreenAccessor",
+    "accessor.AxeItemAccessor",
+    "accessor.HoeItemAccessor",
     "accessor.PotionBrewingAccessor",
-    "accessor.PotionBrewingMixAccessor"
+    "accessor.PotionBrewingMixAccessor",
+    "accessor.ShovelItemAccessor"
   ],
   "mixins": [
   ],
