@@ -31,6 +31,16 @@ public class EmiRenderHelper {
 	public static final Identifier WIDGETS = EmiPort.id("emi", "textures/gui/widgets.png");
 	public static final Identifier BUTTONS = EmiPort.id("emi", "textures/gui/buttons.png");
 	public static final Identifier BACKGROUND = EmiPort.id("emi", "textures/gui/background.png");
+	public static final Identifier CONFIG = EmiPort.id("emi", "textures/gui/config.png");
+
+	public static Component getEmiText() {
+		return
+			EmiPort.append(
+				EmiPort.append(
+					EmiPort.literal("E", net.minecraft.network.chat.Style.EMPTY.withColor(0xeb7bfc)),
+					EmiPort.literal("M", net.minecraft.network.chat.Style.EMPTY.withColor(0x7bfca2))),
+				EmiPort.literal("I", net.minecraft.network.chat.Style.EMPTY.withColor(0x7bebfc)));
+	}
 
 	/**
 	 * The fluid model vanilla baked for the given fluid. On 26.2 fluid sprites and tint live in the

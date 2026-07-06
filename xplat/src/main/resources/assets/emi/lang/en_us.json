@@ -227,6 +227,8 @@
   "emi.fluid.amount.millibuckets": "%smB",
   "emi.fluid.amount.droplets": "%s d",
   "emi.search_config": "Search config...",
+  "tooltip.emi.config": "%s Config",
+  "tooltip.emi.config.global": "Toggle using a global EMI config between all game instances instead of a separate config per game instance",
   "emi.sidebar.cycle": "Press %s to switch sidebars",
   "emi.sidebar.favorite_stack": "Press %s to add/remove a favorited stack",
   "screen.emi.config": "Config",

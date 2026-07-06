@@ -62,6 +62,11 @@ public class EmiDrawContext {
 			regionWidth, regionHeight, textureWidth, textureHeight);
 	}
 
+	/** Blit with an ARGB tint; the 26.2 pipeline has no global shader color, the color rides the blit. */
+	public void drawTexture(Identifier texture, int x, int y, int u, int v, int width, int height, int color) {
+		context.blit(RenderPipelines.GUI_TEXTURED, texture, x, y, u, v, width, height, width, height, 256, 256, color);
+	}
+
 	public void fill(int x, int y, int width, int height, int color) {
 		context.fill(x, y, x + width, y + height, color);
 	}

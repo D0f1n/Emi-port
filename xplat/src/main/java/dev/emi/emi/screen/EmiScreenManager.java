@@ -65,6 +65,15 @@ public class EmiScreenManager {
 
 	/** EMI's search bar — a vanilla EditBox owned and driven by the manager (not a screen child). */
 	public static EditBox search;
+	/** The config button at the bottom left, as the original. */
+	private static final SizedButtonWidget emi = new SizedButtonWidget(0, 0, 20, 20, 204, 0,
+			() -> true, w -> {
+				Minecraft client = client();
+				// Drop search focus first, or the keyboard mixin would swallow the config screen's input.
+				onScreenRemoved();
+				client.gui.setScreen(new ConfigScreen(client.gui.screen()));
+			},
+			List.of(EmiPort.translatable("tooltip.emi.config", EmiRenderHelper.getEmiText())));
 	private static Screen lastScreen;
 
 	public static void setSearchedStacks(List<? extends EmiIngredient> stacks) {
@@ -107,6 +116,9 @@ public class EmiScreenManager {
 		int my = (int) event.y();
 		if (isOverSearch(mx, my)) {
 			search.setFocused(true);
+			return true;
+		}
+		if (emi.mouseClicked(mx, my, event.button())) {
 			return true;
 		}
 		for (SidebarPanel panel : panels) {
@@ -421,6 +433,11 @@ public class EmiScreenManager {
 		search.setY(screenHeight - 21);
 		search.setWidth(SEARCH_WIDTH);
 		search.extractRenderState(graphics, mouseX, mouseY, delta);
+
+		emi.visible = EmiConfig.emiConfigButtonVisibility.resolve(true);
+		emi.x = 2;
+		emi.y = screenHeight - 22;
+		emi.render(context, mouseX, mouseY, delta);
 
 		EmiIngredient hovered = getStackAt(mouseX, mouseY);
 		for (SidebarPanel panel : panels) {

@@ -76,6 +76,15 @@ public final class EmiPort {
 		return text.getVisualOrderText();
 	}
 
+	public static net.minecraft.client.gui.components.Button newButton(int x, int y, int width, int height,
+			Component text, net.minecraft.client.gui.components.Button.OnPress action) {
+		return net.minecraft.client.gui.components.Button.builder(text, action).bounds(x, y, width, height).build();
+	}
+
+	public static void focus(net.minecraft.client.gui.components.EditBox box, boolean focused) {
+		box.setFocused(focused);
+	}
+
 	public static Registry<Item> getItemRegistry() {
 		return BuiltInRegistries.ITEM;
 	}
