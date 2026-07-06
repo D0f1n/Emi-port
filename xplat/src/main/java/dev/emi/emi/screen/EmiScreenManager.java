@@ -14,9 +14,11 @@ import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.config.HeaderType;
 import dev.emi.emi.config.IntGroup;
 import dev.emi.emi.config.Margins;
+import dev.emi.emi.config.ScreenAlign;
 import dev.emi.emi.config.SidebarPages;
 import dev.emi.emi.config.SidebarSettings;
 import dev.emi.emi.config.SidebarSide;
+import dev.emi.emi.config.SidebarTheme;
 import dev.emi.emi.config.SidebarType;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiDrawContext;
@@ -36,6 +38,7 @@ import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 
 /**
  * The EMI overlay core: the left and right sidebar panels and the search bar. Each panel cycles
@@ -448,68 +451,102 @@ public class EmiScreenManager {
 		List<Bounds> exclusion = List.of();
 
 		int right = Math.min(screenWidth - ENTRY_SIZE * 2, guiRight);
-		rightPanel.space = createSpace(new Bounds(right, 0, screenWidth - right, screenHeight), exclusion, true);
+		rightPanel.space = createSpace(rightPanel, new Bounds(right, 0, screenWidth - right, screenHeight), exclusion);
 
 		int left = Math.max(ENTRY_SIZE * 2, guiLeft);
-		leftPanel.space = createSpace(new Bounds(0, 0, left, screenHeight), exclusion, false);
+		leftPanel.space = createSpace(leftPanel, new Bounds(0, 0, left, screenHeight), exclusion);
 
 		for (SidebarPanel panel : panels) {
 			panel.wrapPage();
 		}
 	}
 
-	private static ScreenSpace createSpace(Bounds bounds, List<Bounds> exclusion, boolean rtl) {
-		// The right sidebar is the index, the left one is favorites — same fixed pairing the panels use.
-		SidebarSettings settings = rtl ? SidebarSettings.RIGHT : SidebarSettings.LEFT;
+	private static ScreenSpace createSpace(SidebarPanel panel, Bounds bounds, List<Bounds> exclusion) {
+		// The original also lays out the panel's subpanel spaces here. TODO(polish)
+		SidebarSettings settings = panel.pages.settings;
+		boolean rtl = panel.rtl;
 		IntGroup size = settings.size();
 		Margins margins = settings.margins();
+		ScreenAlign align = settings.align();
+		SidebarTheme theme = settings.theme();
 		int maxColumns = size.values.getInt(0);
 		int maxRows = size.values.getInt(1);
+		int cx = bounds.x() + bounds.width() / 2;
+		int cy = bounds.y() + bounds.height() / 2;
 		int headerOffset = settings.header() == HeaderType.VISIBLE ? HEADER_OFFSET : 0;
 		// Try a more optimistic approach to position the bounding box slightly more
 		// pleasantly if applicable
-		int idealWidth = Math.min(maxColumns * ENTRY_SIZE + margins.left() + margins.right(), bounds.width());
-		int idealHeight = Math.min(maxRows * ENTRY_SIZE + margins.top() + margins.bottom() + headerOffset, bounds.height());
+		int idealWidth = Math.min(
+				maxColumns * ENTRY_SIZE + margins.left() + margins.right() + theme.horizontalPadding * 2, bounds.width());
+		int idealHeight = Math.min(
+				maxRows * ENTRY_SIZE + margins.top() + margins.bottom() + theme.verticalPadding * 2 + headerOffset,
+				bounds.height());
 		// The original keys both axes of the ideal box off the horizontal alignment
-		int idealX = rtl ? bounds.right() - idealWidth : bounds.left();
-		int idealY = rtl ? bounds.bottom() - idealHeight : bounds.top();
-		Bounds idealBounds = constrainBounds(exclusion, new Bounds(idealX, idealY, idealWidth, idealHeight));
+		int idealX = switch (align.horizontal) {
+			case LEFT -> bounds.x();
+			case CENTER -> bounds.x() + bounds.width() / 2 - idealWidth / 2;
+			case RIGHT -> bounds.right() - idealWidth;
+		};
+		int idealY = switch (align.horizontal) {
+			case LEFT -> bounds.y();
+			case CENTER -> bounds.y() + bounds.height() / 2 - idealHeight / 2;
+			case RIGHT -> bounds.bottom() - idealHeight;
+		};
+		Bounds idealBounds = constrainBounds(exclusion, new Bounds(idealX, idealY, idealWidth, idealHeight), align,
+				headerOffset);
 
-		bounds = constrainBounds(exclusion, bounds);
+		bounds = constrainBounds(exclusion, bounds, align, headerOffset);
 
 		if (Math.min(idealWidth, idealBounds.width()) * Math.min(idealHeight, idealBounds.height()) > Math
 				.min(idealWidth, bounds.width()) * Math.min(idealHeight, bounds.height())) {
 			bounds = idealBounds;
 		}
 
-		int xMin = bounds.left() + margins.left();
-		int xMax = bounds.right() - margins.right();
-		int yMin = bounds.top() + margins.top();
-		int yMax = bounds.bottom() - margins.bottom();
+		int xMin = bounds.left() + margins.left() + theme.horizontalPadding;
+		int xMax = bounds.right() - margins.right() - theme.horizontalPadding;
+		int yMin = bounds.top() + margins.top() + theme.verticalPadding;
+		int yMax = bounds.bottom() - margins.bottom() - theme.verticalPadding;
 		int xSpan = xMax - xMin;
 		int ySpan = yMax - yMin;
 		int tw = Math.max(0, Math.min(xSpan / ENTRY_SIZE, maxColumns));
 		int th = Math.max(0, Math.min((ySpan - headerOffset) / ENTRY_SIZE, maxRows));
-		int tx = rtl ? xMax - tw * ENTRY_SIZE : xMin; // align RIGHT for the index, LEFT for favorites
-		int ty = yMin + headerOffset; // align TOP
+		int hl = xMin;
+		int hr = xMax - tw * ENTRY_SIZE;
+		int tx = switch (align.horizontal) {
+			case LEFT -> hl;
+			case CENTER -> Mth.clamp(cx - (tw * ENTRY_SIZE) / 2, hl, hr);
+			case RIGHT -> hr;
+		};
+		int vt = yMin + headerOffset;
+		int vb = yMax - th * ENTRY_SIZE;
+		int ty = switch (align.vertical) {
+			case TOP -> vt;
+			case CENTER -> Mth.clamp(cy - (th * ENTRY_SIZE - headerOffset + theme.verticalPadding / 2) / 2, vt, vb);
+			case BOTTOM -> vb;
+		};
 		return new ScreenSpace(tx, ty, tw, th, rtl, exclusion);
 	}
 
 	/**
-	 * The original's exclusion-driven bounds shrinking, specialized to TOP vertical alignment.
-	 * With no exclusion areas registered this is a no-op.
+	 * The original's exclusion-driven bounds shrinking. With no exclusion areas registered this is
+	 * a no-op.
 	 */
-	private static Bounds constrainBounds(List<Bounds> exclusion, Bounds bounds) {
+	private static Bounds constrainBounds(List<Bounds> exclusion, Bounds bounds, ScreenAlign align, int headerOffset) {
 		for (int i = 0; i < exclusion.size(); i++) {
 			Bounds overlap = exclusion.get(i).overlap(bounds);
 			if (!overlap.empty() && !bounds.empty()) {
-				if (overlap.top() < bounds.top() + ENTRY_SIZE + HEADER_OFFSET || overlap.width() >= bounds.width() * 2 / 3
+				if (overlap.top() < bounds.top() + ENTRY_SIZE + headerOffset || overlap.width() >= bounds.width() * 2 / 3
 						|| overlap.height() >= bounds.height() / 3) {
 					int widthFactor = overlap.width() * 10 / bounds.width();
 					int heightFactor = overlap.height() * 10 / bounds.height();
 					if (heightFactor < widthFactor) {
-						int cy = bounds.y() + bounds.height() / 2 - bounds.height() / 4; // align.vertical = TOP
+						int cy = bounds.y() + bounds.height() / 2;
 						int ocy = overlap.y() + overlap.height() / 2;
+						cy += switch (align.vertical) {
+							case TOP -> -bounds.height() / 4;
+							case CENTER -> 0;
+							case BOTTOM -> bounds.height() / 4;
+						};
 						if (cy < ocy) {
 							bounds = new Bounds(bounds.x(), bounds.y(), bounds.width(), overlap.top() - bounds.top());
 						} else {
@@ -517,8 +554,13 @@ public class EmiScreenManager {
 									bounds.bottom() - overlap.bottom());
 						}
 					} else {
-						int cx = bounds.x() + bounds.width() / 2 + bounds.width() / 4; // align.horizontal = RIGHT
+						int cx = bounds.x() + bounds.width() / 2;
 						int ocx = overlap.x() + overlap.width() / 2;
+						cx += switch (align.horizontal) {
+							case LEFT -> -bounds.width() / 4;
+							case CENTER -> 0;
+							case RIGHT -> bounds.width() / 4;
+						};
 						if (cx < ocx) {
 							bounds = new Bounds(bounds.x(), bounds.y(), overlap.left() - bounds.left(), bounds.height());
 						} else {
@@ -526,8 +568,12 @@ public class EmiScreenManager {
 									bounds.height());
 						}
 					}
+					i = -1;
 				}
 			}
+		}
+		if (bounds.empty()) {
+			return Bounds.EMPTY;
 		}
 		return bounds;
 	}
