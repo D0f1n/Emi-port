@@ -2,18 +2,22 @@ package dev.emi.emi.jemi;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
 import dev.emi.emi.EmiPort;
 import dev.emi.emi.api.EmiPlugin;
 import dev.emi.emi.api.EmiRegistry;
+import dev.emi.emi.api.recipe.EmiInfoRecipe;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.EmiRecipeCategory;
 import dev.emi.emi.api.recipe.VanillaEmiRecipeCategories;
 import dev.emi.emi.api.recipe.handler.EmiRecipeHandler;
+import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.jemi.runtime.JemiBookmarkOverlay;
 import dev.emi.emi.jemi.runtime.JemiIngredientFilter;
@@ -29,8 +33,13 @@ import mezz.jei.api.JeiPlugin;
 import mezz.jei.api.constants.RecipeTypes;
 import mezz.jei.api.recipe.category.IRecipeCategory;
 import mezz.jei.api.recipe.types.IRecipeType;
+import mezz.jei.api.recipe.vanilla.IJeiIngredientInfoRecipe;
 import mezz.jei.api.registration.IRuntimeRegistration;
 import mezz.jei.api.runtime.IJeiRuntime;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.FormattedText;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 
@@ -132,8 +141,7 @@ public class JemiPlugin implements IModPlugin, EmiPlugin {
 					continue;
 				}
 				if (type == RecipeTypes.INFORMATION) {
-					// TODO(polish): EMI's info category/recipes are deferred; JEI info pages are
-					// skipped rather than wrapped.
+					addInfoRecipes(registry, (IRecipeCategory<IJeiIngredientInfoRecipe>) c);
 					continue;
 				}
 				if (existingCategories.contains(id)) {
@@ -173,6 +181,38 @@ public class JemiPlugin implements IModPlugin, EmiPlugin {
 	private static void putMapped(Map<IRecipeType<?>, EmiRecipeCategory> map, IRecipeType<?> type, EmiRecipeCategory category) {
 		if (category != null) {
 			map.put(type, category);
+		}
+	}
+
+	private void addInfoRecipes(EmiRegistry registry, IRecipeCategory<IJeiIngredientInfoRecipe> category) {
+		List<IJeiIngredientInfoRecipe> recipes = runtime.getRecipeManager().createRecipeLookup(RecipeTypes.INFORMATION).includeHidden().get().toList();
+		Map<List<EmiStack>, List<IJeiIngredientInfoRecipe>> grouped = Maps.newHashMap();
+		for (IJeiIngredientInfoRecipe recipe : recipes) {
+			grouped.computeIfAbsent(recipe.getIngredients().stream().map(JemiUtil::getStack).toList(), k -> Lists.newArrayList()).add(recipe);
+		}
+		Map<Component, List<EmiStack>> identical = Maps.newHashMap();
+		for (Map.Entry<List<EmiStack>, List<IJeiIngredientInfoRecipe>> group : grouped.entrySet()) {
+			MutableComponent text = EmiPort.literal("");
+			for (IJeiIngredientInfoRecipe recipe : group.getValue()) {
+				for (FormattedText sv : recipe.getDescription()) {
+					MutableComponent current = EmiPort.literal("");
+					sv.visit((style, string) -> {
+						current.append(EmiPort.literal(string, style));
+						return Optional.empty();
+					}, Style.EMPTY);
+					if (!current.getString().isBlank()) {
+						if (!text.getString().isEmpty()) {
+							text.append(" ");
+						}
+						text.append(current);
+					}
+				}
+			}
+			identical.computeIfAbsent(text, k -> Lists.newArrayList()).addAll(group.getKey());
+		}
+
+		for (Component text : identical.keySet()) {
+			registry.addRecipe(new EmiInfoRecipe(identical.get(text).stream().map(s -> (EmiIngredient) s).toList(), List.of(text), null));
 		}
 	}
 

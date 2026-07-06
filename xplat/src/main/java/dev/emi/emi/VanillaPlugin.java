@@ -108,6 +108,8 @@ public class VanillaPlugin implements EmiPlugin {
 			EmiTexture.FULL_FLAME, EmiTexture.FULL_FLAME, EmiRecipeSorting.compareInputThenOutput());
 		COMPOSTING = new EmiRecipeCategory(EmiPort.id("emi:composting"),
 			EmiStack.of(Items.COMPOSTER), EmiStack.of(Items.COMPOSTER), EmiRecipeSorting.compareInputThenOutput());
+		INFO = new EmiRecipeCategory(EmiPort.id("emi:info"),
+			EmiStack.of(Items.WRITABLE_BOOK), EmiStack.of(Items.WRITABLE_BOOK), EmiRecipeSorting.none());
 
 		registry.addCategory(CRAFTING);
 		registry.addCategory(SMELTING);
@@ -121,6 +123,7 @@ public class VanillaPlugin implements EmiPlugin {
 		registry.addCategory(BREWING);
 		registry.addCategory(FUEL);
 		registry.addCategory(COMPOSTING);
+		registry.addCategory(INFO);
 		registry.addCategory(TAG);
 		registry.addCategory(RESOLUTION);
 
