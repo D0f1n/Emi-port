@@ -11,8 +11,8 @@ import net.minecraft.util.GsonHelper;
 
 /**
  * Client-side persistent state, written to {@code emi.json} in the game directory like the original.
- * Only the {@code favorites} section is ported; the original's sidebar history, BoM recipe defaults
- * and hidden stacks sections load/save with their own rounds. TODO(history) TODO(bom)
+ * The {@code favorites} and sidebar history sections are ported; the original's BoM recipe defaults
+ * and hidden stacks sections load/save with their own rounds. TODO(bom)
  */
 public class EmiPersistentData {
 	public static final File FILE = new File("emi.json");
@@ -22,6 +22,7 @@ public class EmiPersistentData {
 		try {
 			JsonObject json = new JsonObject();
 			json.add("favorites", EmiFavorites.save());
+			EmiSidebars.save(json);
 			FileWriter writer = new FileWriter(FILE);
 			GSON.toJson(json, writer);
 			writer.close();
@@ -39,6 +40,7 @@ public class EmiPersistentData {
 			if (GsonHelper.isArrayNode(json, "favorites")) {
 				EmiFavorites.load(GsonHelper.getAsJsonArray(json, "favorites"));
 			}
+			EmiSidebars.load(json);
 		} catch (Exception e) {
 			EmiLog.error("Failed to parse persistent data", e);
 		}
