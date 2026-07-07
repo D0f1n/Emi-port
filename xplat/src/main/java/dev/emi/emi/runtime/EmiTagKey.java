@@ -25,7 +25,8 @@ import net.minecraft.world.level.material.Fluid;
 
 // Wrapper around TagKeys
 public class EmiTagKey<T> {
-	public static final Map<TagKey<?>, EmiTagKey<?>> CACHE = Maps.newHashMap();
+	// Concurrent: search workers construct TagQuery instances off-thread and populate this lazily.
+	public static final Map<TagKey<?>, EmiTagKey<?>> CACHE = Maps.newConcurrentMap();
 	private final TagKey<T> raw;
 	private List<T> cached;
 
