@@ -1,22 +1,36 @@
 package dev.emi.emi.search;
 
 import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 
+import dev.emi.emi.EmiUtil;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.config.EmiConfig;
+import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiLog;
 import dev.emi.emi.screen.EmiScreenManager;
+import net.minecraft.client.searchtree.SuffixArray;
+import net.minecraft.core.Holder;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
 
 /**
- * The EMI search engine. Keeps the query compiler and the full prefix syntax ({@code @}mod,
- * {@code $}tooltip, {@code #}tag, {@code /regex/}, {@code |} OR, {@code -} negate); aliases and the
- * {@code SuffixArray} fast-index are still to come — every stack is tested via {@code matchesUnbaked}.
+ * The EMI search engine: the query compiler with the full prefix syntax ({@code @}mod, {@code $}tooltip,
+ * {@code #}tag, {@code /regex/}, {@code |} OR, {@code -} negate), and the baked {@code SuffixArray}
+ * indexes over names (display name + id path), tooltips and mod names. Stacks outside the baked index
+ * fall back to live {@code matchesUnbaked} tests; aliases are not ported yet.
  *
  * <p>Each search runs on its own daemon worker thread; a newer search supersedes the running one, which
  * notices via {@code currentWorker} and bails. Results are published into the volatile {@link #stacks},
@@ -41,6 +55,61 @@ public class EmiSearch {
 	public static volatile Thread searchThread = null;
 	public static volatile List<? extends EmiIngredient> stacks = List.of();
 	public static volatile CompiledQuery compiledQuery;
+	public static Set<EmiStack> bakedStacks;
+	public static SuffixArray<SearchStack> names, tooltips, mods;
+
+	public static void bake() {
+		SuffixArray<SearchStack> names = new SuffixArray<>();
+		SuffixArray<SearchStack> tooltips = new SuffixArray<>();
+		SuffixArray<SearchStack> mods = new SuffixArray<>();
+		Set<EmiStack> bakedStacks = Sets.newIdentityHashSet();
+		boolean old = EmiConfig.appendItemModId;
+		EmiConfig.appendItemModId = false;
+		for (EmiStack stack : EmiStackList.stacks) {
+			try {
+				SearchStack searchStack = new SearchStack(stack);
+				bakedStacks.add(stack);
+				Component name = NameQuery.getText(stack);
+				if (name != null) {
+					names.add(searchStack, name.getString().toLowerCase());
+				}
+				List<Component> tooltip = stack.getTooltipText();
+				if (tooltip != null) {
+					for (int i = 1; i < tooltip.size(); i++) {
+						Component text = tooltip.get(i);
+						if (text != null) {
+							tooltips.add(searchStack, text.getString().toLowerCase());
+						}
+					}
+				}
+				Identifier id = stack.getId();
+				if (id != null) {
+					mods.add(searchStack, EmiUtil.getModName(id.getNamespace()).toLowerCase());
+					mods.add(searchStack, id.getNamespace().toLowerCase());
+					names.add(searchStack, id.getPath().toLowerCase());
+				}
+				if (stack.getItemStack().getItem() == Items.ENCHANTED_BOOK) {
+					for (Holder<Enchantment> e : stack.getOrDefault(DataComponents.ENCHANTMENTS, ItemEnchantments.EMPTY).keySet()) {
+						Identifier eid = e.unwrapKey().map(ResourceKey::identifier).orElse(null);
+						if (eid != null && !eid.getNamespace().equals("minecraft")) {
+							mods.add(searchStack, EmiUtil.getModName(eid.getNamespace()).toLowerCase());
+						}
+					}
+				}
+			} catch (Exception e) {
+				EmiLog.error("EMI caught an exception while baking search for " + stack, e);
+			}
+		}
+		// TODO(alias): the original also bakes alias strings here once EmiData aliases are ported.
+		EmiConfig.appendItemModId = old;
+		names.generate();
+		tooltips.generate();
+		mods.generate();
+		EmiSearch.names = names;
+		EmiSearch.tooltips = tooltips;
+		EmiSearch.mods = mods;
+		EmiSearch.bakedStacks = bakedStacks;
+	}
 
 	public static void search(String query) {
 		synchronized (EmiSearch.class) {
@@ -126,7 +195,13 @@ public class EmiSearch {
 		}
 
 		public boolean test(EmiStack stack) {
-			return fullQuery == null || fullQuery.matchesUnbaked(stack);
+			if (fullQuery == null) {
+				return true;
+			} else if (EmiSearch.bakedStacks.contains(stack)) {
+				return fullQuery.matches(stack);
+			} else {
+				return fullQuery.matchesUnbaked(stack);
+			}
 		}
 
 		private static void addQuery(String s, boolean negated, List<Query> queries,

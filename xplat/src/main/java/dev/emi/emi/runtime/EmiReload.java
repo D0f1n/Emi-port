@@ -29,6 +29,7 @@ import dev.emi.emi.registry.EmiRegistryImpl;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.registry.EmiTags;
 import dev.emi.emi.screen.EmiScreenManager;
+import dev.emi.emi.search.EmiSearch;
 import dev.emi.emi.stack.serializer.FluidEmiStackSerializer;
 import dev.emi.emi.stack.serializer.ItemEmiStackSerializer;
 import dev.emi.emi.stack.serializer.ListEmiIngredientSerializer;
@@ -101,6 +102,7 @@ public class EmiReload {
 			EmiLog.info("EmiStackList: " + EmiStackList.stacks.size() + " stacks (built in "
 				+ (System.currentTimeMillis() - start) + "ms after world load)");
 			reloadRecipes();
+			EmiSearch.bake();
 		} catch (Throwable t) {
 			EmiLog.error("EMI failed to build the stack index", t);
 		} finally {
