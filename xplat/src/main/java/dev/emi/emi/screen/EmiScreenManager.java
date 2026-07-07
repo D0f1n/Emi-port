@@ -112,6 +112,9 @@ public class EmiScreenManager {
 	/** Clears the search and shows the full index; called when the index is (re)built on world join. */
 	public static void reset() {
 		searchedStacks = EmiStackList.stacks;
+		// Keep the async search result in step, or the render-thread pickup would immediately
+		// overwrite this reset with a stale result.
+		EmiSearch.stacks = EmiStackList.stacks;
 		for (SidebarPanel panel : panels) {
 			panel.page = 0;
 		}
@@ -584,6 +587,9 @@ public class EmiScreenManager {
 		int screenWidth = client.getWindow().getGuiScaledWidth();
 		int screenHeight = client.getWindow().getGuiScaledHeight();
 		recalculate(leftPos, leftPos + imageWidth);
+		if (searchedStacks != EmiSearch.stacks) {
+			setSearchedStacks(EmiSearch.stacks);
+		}
 		lastMouseX = mouseX;
 		lastMouseY = mouseY;
 		// Drop search focus when the screen changes, so the EMI search never swallows input meant for a
