@@ -8,7 +8,9 @@ import dev.emi.emi.network.EmiNetwork;
 import dev.emi.emi.network.PingS2CPacket;
 import dev.emi.emi.network.RecipeSyncS2CPacket;
 import dev.emi.emi.runtime.EmiLog;
+import io.netty.buffer.Unpooled;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.crafting.RecipeHolder;
@@ -39,28 +41,45 @@ public class EmiServer {
 			return;
 		}
 		int sent = 0;
+		int packets = 0;
+		long totalBytes = 0;
+		// Every entry is pre-encoded here with the exact packet logic, so batch sizes are accounted
+		// in real wire bytes and entries that cannot encode are skipped up front instead of failing
+		// the whole packet later on the network thread.
+		RegistryFriendlyByteBuf scratch = new RegistryFriendlyByteBuf(Unpooled.buffer(), server.registryAccess());
 		List<RecipeSyncS2CPacket.Entry> batch = Lists.newArrayList();
 		boolean first = true;
 		for (RecipeHolder<?> holder : server.getRecipeManager().getRecipes()) {
+			int mark = scratch.writerIndex();
 			try {
 				List<RecipeDisplay> displays = holder.value().display();
 				if (displays.isEmpty()) {
 					continue;
 				}
-				batch.add(new RecipeSyncS2CPacket.Entry(holder.id().identifier(),
-					BuiltInRegistries.RECIPE_TYPE.getKey(holder.value().getType()), displays));
+				RecipeSyncS2CPacket.Entry entry = new RecipeSyncS2CPacket.Entry(holder.id().identifier(),
+					BuiltInRegistries.RECIPE_TYPE.getKey(holder.value().getType()), displays);
+				RecipeSyncS2CPacket.writeEntry(scratch, entry);
+				batch.add(entry);
 				sent++;
 			} catch (Exception e) {
+				scratch.writerIndex(mark);
 				EmiLog.warn("Failed to read displays for recipe " + holder.id().identifier(), e);
 				continue;
 			}
 			if (batch.size() >= SYNC_BATCH_SIZE) {
 				EmiNetwork.sendToClient(player, new RecipeSyncS2CPacket(first, false, batch));
+				packets++;
+				totalBytes += scratch.writerIndex();
+				scratch.clear();
 				batch = Lists.newArrayList();
 				first = false;
 			}
 		}
 		EmiNetwork.sendToClient(player, new RecipeSyncS2CPacket(first, true, batch));
-		EmiLog.info("Synced " + sent + " recipes to " + player.getName().getString());
+		packets++;
+		totalBytes += scratch.writerIndex();
+		scratch.release();
+		EmiLog.info("Synced " + sent + " recipes to " + player.getName().getString()
+			+ " in " + packets + " packets (" + (totalBytes / 1024) + " KiB)");
 	}
 }

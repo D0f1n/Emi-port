@@ -58,12 +58,20 @@ public class RecipeSyncS2CPacket implements EmiPacket {
 		buf.writeByte((reset ? 1 : 0) | (last ? 2 : 0));
 		buf.writeVarInt(entries.size());
 		for (Entry entry : entries) {
-			Identifier.STREAM_CODEC.encode(buf, entry.id());
-			Identifier.STREAM_CODEC.encode(buf, entry.typeId());
-			buf.writeVarInt(entry.displays().size());
-			for (RecipeDisplay display : entry.displays()) {
-				RecipeDisplay.STREAM_CODEC.encode(buf, display);
-			}
+			writeEntry(buf, entry);
+		}
+	}
+
+	/**
+	 * Encodes one entry. The server also runs this against a scratch buffer while batching, so the
+	 * size accounting and the real send stay byte-identical by construction.
+	 */
+	public static void writeEntry(RegistryFriendlyByteBuf buf, Entry entry) {
+		Identifier.STREAM_CODEC.encode(buf, entry.id());
+		Identifier.STREAM_CODEC.encode(buf, entry.typeId());
+		buf.writeVarInt(entry.displays().size());
+		for (RecipeDisplay display : entry.displays()) {
+			RecipeDisplay.STREAM_CODEC.encode(buf, display);
 		}
 	}
 

@@ -102,7 +102,10 @@ public class EmiReload {
 			EmiLog.info("EmiStackList: " + EmiStackList.stacks.size() + " stacks (built in "
 				+ (System.currentTimeMillis() - start) + "ms after world load)");
 			reloadRecipes();
+			long searchStart = System.currentTimeMillis();
 			EmiSearch.bake();
+			EmiLog.info("Search index baked in " + (System.currentTimeMillis() - searchStart) + "ms");
+			EmiLog.info("Reload done in " + (System.currentTimeMillis() - start) + "ms total on the client thread");
 		} catch (Throwable t) {
 			EmiLog.error("EMI failed to build the stack index", t);
 		} finally {
