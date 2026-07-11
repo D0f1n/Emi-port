@@ -23,6 +23,7 @@ import dev.emi.emi.config.SidebarType;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiDrawContext;
 import dev.emi.emi.runtime.EmiFavorites;
+import dev.emi.emi.runtime.EmiReloadManager;
 import dev.emi.emi.runtime.EmiSidebars;
 import dev.emi.emi.screen.widget.SidebarButtonWidget;
 import dev.emi.emi.screen.widget.SizedButtonWidget;
@@ -124,6 +125,15 @@ public class EmiScreenManager {
 		}
 	}
 
+	/**
+	 * As the original: EMI is hidden and inert until the reload worker has published a complete
+	 * index. This gate is what keeps the render thread and new searches away from a rebuild in
+	 * progress — input and rendering never touch half-reloaded state.
+	 */
+	public static boolean isDisabled() {
+		return !EmiReloadManager.isLoaded() || !EmiConfig.enabled;
+	}
+
 	private static boolean isOverSearch(double mouseX, double mouseY) {
 		return search != null && search.isMouseOver(mouseX, mouseY);
 	}
@@ -131,7 +141,7 @@ public class EmiScreenManager {
 	// --- input routing (from the screen mixins) ---
 
 	public static boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		if (!EmiConfig.enabled) {
+		if (isDisabled()) {
 			return false;
 		}
 		int mx = (int) event.x();
@@ -165,7 +175,7 @@ public class EmiScreenManager {
 	}
 
 	public static boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
-		if (!EmiConfig.enabled) {
+		if (isDisabled()) {
 			return false;
 		}
 		if (draggedStack.isEmpty() && button == 0 && !pressedStack.isEmpty()) {
@@ -188,7 +198,7 @@ public class EmiScreenManager {
 	}
 
 	public static boolean mouseReleased(double mouseX, double mouseY, int button) {
-		if (!EmiConfig.enabled) {
+		if (isDisabled()) {
 			return false;
 		}
 		try {
@@ -233,7 +243,7 @@ public class EmiScreenManager {
 	}
 
 	public static boolean mouseScrolled(double mouseX, double mouseY, double verticalAmount) {
-		if (!EmiConfig.enabled) {
+		if (isDisabled()) {
 			return false;
 		}
 		SidebarPanel panel = getHoveredPanel((int) mouseX, (int) mouseY);
@@ -277,7 +287,7 @@ public class EmiScreenManager {
 			EmiConfig.writeConfig();
 			return true;
 		}
-		if (!EmiConfig.enabled) {
+		if (isDisabled()) {
 			return false;
 		}
 		if (EmiConfig.focusSearch.matchesKey(event.key(), event.scancode())) {
@@ -601,6 +611,22 @@ public class EmiScreenManager {
 			}
 		}
 		if (!EmiConfig.enabled) {
+			return;
+		}
+		if (!EmiReloadManager.isLoaded()) {
+			// The reload worker is (re)building; render only the status line, as the original.
+			EmiDrawContext status = EmiDrawContext.wrap(graphics);
+			if (EmiReloadManager.getStatus() == -1) {
+				status.drawTextWithShadow(EmiPort.translatable("emi.reloading.error"), 4, screenHeight - 16);
+			} else if (EmiReloadManager.getStatus() == 0) {
+				status.drawTextWithShadow(EmiPort.translatable("emi.reloading.waiting"), 4, screenHeight - 16);
+			} else {
+				status.drawTextWithShadow(EmiPort.translatable("emi.reloading"), 4, screenHeight - 16);
+				status.drawTextWithShadow(EmiReloadManager.reloadStep, 4, screenHeight - 26);
+				if (System.currentTimeMillis() > EmiReloadManager.reloadWorry) {
+					status.drawTextWithShadow(EmiPort.translatable("emi.reloading.worry"), 4, screenHeight - 36);
+				}
+			}
 			return;
 		}
 		updateCraftables();
