@@ -18,6 +18,7 @@ import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenCustomHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenCustomHashSet;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.flag.FeatureFlagSet;
@@ -75,23 +76,21 @@ public class EmiStackList {
 			}
 		}
 
-		// Creative tab population. CreativeModeTab.buildContents is patched by both loaders (Fabric's
-		// creative-tab API and NeoForge's BuildCreativeModeTabContentsEvent), so this single vanilla path
-		// picks up modded items on both — no loader-specific EmiAgnos split needed.
-		for (CreativeModeTab tab : CreativeModeTabs.allTabs()) {
-			if (tab.getType() == CreativeModeTab.Type.HOTBAR || tab.getType() == CreativeModeTab.Type.INVENTORY) {
-				continue;
-			}
-			try {
-				tab.buildContents(params);
-				IndexGroup ig = new IndexGroup();
-				for (ItemStack stack : tab.getSearchTabDisplayItems()) {
-					ig.stacks.add(EmiStack.of(stack));
-				}
-				groups.add(ig);
-			} catch (Exception e) {
-				EmiLog.error("Creative tab " + tab + " threw while EMI was attempting to construct the index, items may be missing.", e);
-			}
+		// Creative tab population stays on the render thread even though the rest of the reload runs
+		// on the worker: CreativeModeTab.buildContents mutates the tab's shared display sets, which
+		// JEI (on recipe sync) and vanilla's creative screen also rebuild on the render thread — a
+		// concurrent build corrupts the sets for both sides (fastutil AIOOBE, missing tabs).
+		Minecraft client = Minecraft.getInstance();
+		if (client.isSameThread()) {
+			groups.addAll(buildCreativeTabGroups(params));
+		} else {
+			groups.addAll(client.submit(() -> {
+				long tabStart = System.currentTimeMillis();
+				List<IndexGroup> tabGroups = buildCreativeTabGroups(params);
+				EmiLog.info("Creative tab contents built on the render thread in "
+					+ (System.currentTimeMillis() - tabStart) + "ms");
+				return tabGroups;
+			}).join());
 		}
 
 		groups.addAll(namespaceGroups.values());
@@ -124,6 +123,28 @@ public class EmiStackList {
 			}
 		}
 		stacks = built;
+	}
+
+	// Both loaders patch CreativeModeTab.buildContents (Fabric's creative-tab API and NeoForge's
+	// BuildCreativeModeTabContentsEvent), so this single vanilla path picks up modded items on both.
+	private static List<IndexGroup> buildCreativeTabGroups(CreativeModeTab.ItemDisplayParameters params) {
+		List<IndexGroup> groups = Lists.newArrayList();
+		for (CreativeModeTab tab : CreativeModeTabs.allTabs()) {
+			if (tab.getType() == CreativeModeTab.Type.HOTBAR || tab.getType() == CreativeModeTab.Type.INVENTORY) {
+				continue;
+			}
+			try {
+				tab.buildContents(params);
+				IndexGroup ig = new IndexGroup();
+				for (ItemStack stack : tab.getSearchTabDisplayItems()) {
+					ig.stacks.add(EmiStack.of(stack));
+				}
+				groups.add(ig);
+			} catch (Exception e) {
+				EmiLog.error("Creative tab " + tab + " threw while EMI was attempting to construct the index, items may be missing.", e);
+			}
+		}
+		return groups;
 	}
 
 	@SuppressWarnings({"unchecked"})

@@ -18,13 +18,26 @@ public class EmiInfoRecipe implements EmiRecipe {
 	private static final int PADDING = 4;
 	private static final Minecraft CLIENT = Minecraft.getInstance();
 	private final List<EmiIngredient> stacks;
-	private final List<FormattedCharSequence> text;
+	private final List<Component> rawText;
+	// Split lazily on first use: on 26.2 Font.split may bake glyph textures, which asserts the
+	// render thread, and construction happens on the reload worker (the original split eagerly,
+	// safe on 1.21.1 where splitting never touched the GPU).
+	private volatile List<FormattedCharSequence> text;
 	private final Identifier id;
 
 	public EmiInfoRecipe(List<EmiIngredient> stacks, List<Component> text, @Nullable Identifier id) {
 		this.stacks = stacks;
-		this.text = text.stream().flatMap(t -> CLIENT.font.split(t, getDisplayWidth() - 4).stream()).toList();
+		this.rawText = text;
 		this.id = id;
+	}
+
+	private List<FormattedCharSequence> text() {
+		List<FormattedCharSequence> text = this.text;
+		if (text == null) {
+			text = rawText.stream().flatMap(t -> CLIENT.font.split(t, getDisplayWidth() - 4).stream()).toList();
+			this.text = text;
+		}
+		return text;
 	}
 
 	@Override
@@ -60,7 +73,7 @@ public class EmiInfoRecipe implements EmiRecipe {
 	@Override
 	public int getDisplayHeight() {
 		int stackHeight = ((Math.min(stacks.size(), MAX_STACKS) - 1) / STACK_WIDTH + 1) * 18;
-		return stackHeight + CLIENT.font.lineHeight * text.size() + PADDING;
+		return stackHeight + CLIENT.font.lineHeight * text().size() + PADDING;
 	}
 
 	@Override
@@ -81,6 +94,7 @@ public class EmiInfoRecipe implements EmiRecipe {
 			}
 		}
 		int y = stackHeight * 18 + PADDING;
+		List<FormattedCharSequence> text = text();
 		int lineCount = (widgets.getHeight() - y) / CLIENT.font.lineHeight;
 		PageManager manager = new PageManager(text, lineCount);
 		if (lineCount < text.size()) {
