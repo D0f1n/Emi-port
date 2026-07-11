@@ -55,8 +55,10 @@ public class EmiSearch {
 	public static volatile Thread searchThread = null;
 	public static volatile List<? extends EmiIngredient> stacks = List.of();
 	public static volatile CompiledQuery compiledQuery;
-	public static Set<EmiStack> bakedStacks;
-	public static SuffixArray<SearchStack> names, tooltips, mods;
+	// Built into locals by bake() and published complete: search workers read these fields while a
+	// background reload re-bakes, and must only ever observe a finished generation (old or new).
+	public static volatile Set<EmiStack> bakedStacks;
+	public static volatile SuffixArray<SearchStack> names, tooltips, mods;
 
 	public static void bake() {
 		SuffixArray<SearchStack> names = new SuffixArray<>();

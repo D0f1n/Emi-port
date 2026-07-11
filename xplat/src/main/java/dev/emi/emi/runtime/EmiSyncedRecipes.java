@@ -14,7 +14,8 @@ import net.minecraft.client.Minecraft;
  */
 public class EmiSyncedRecipes {
 	private static final List<RecipeSyncS2CPacket.Entry> pending = Lists.newArrayList();
-	private static List<RecipeSyncS2CPacket.Entry> recipes = List.of();
+	// Written on the client thread, read by the reload worker during a harvest.
+	private static volatile List<RecipeSyncS2CPacket.Entry> recipes = List.of();
 
 	public static void receive(boolean reset, boolean last, List<RecipeSyncS2CPacket.Entry> entries) {
 		if (reset) {

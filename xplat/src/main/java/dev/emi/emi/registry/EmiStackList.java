@@ -44,16 +44,18 @@ public class EmiStackList {
 	private static final TagKey<Block> BLOCK_HIDDEN = TagKey.create(EmiPort.getBlockRegistry().key(), EmiTags.HIDDEN_FROM_RECIPE_VIEWERS);
 	private static final TagKey<Fluid> FLUID_HIDDEN = TagKey.create(EmiPort.getFluidRegistry().key(), EmiTags.HIDDEN_FROM_RECIPE_VIEWERS);
 	public static List<Predicate<EmiStack>> invalidators = Lists.newArrayList();
-	public static List<EmiStack> stacks = List.of();
-	public static List<EmiStack> filteredStacks = List.of();
-	private static Object2IntMap<EmiStack> strictIndices = new Object2IntOpenCustomHashMap<>(new StrictHashStrategy());
-	private static Object2IntMap<Object> keyIndices = new Object2IntOpenHashMap<>();
+	// Published complete and never mutated in place: search workers and the render thread read these
+	// while a reload is rebuilding, and must only ever observe a finished index (old or new).
+	public static volatile List<EmiStack> stacks = List.of();
+	public static volatile List<EmiStack> filteredStacks = List.of();
+	private static volatile Object2IntMap<EmiStack> strictIndices = new Object2IntOpenCustomHashMap<>(new StrictHashStrategy());
+	private static volatile Object2IntMap<Object> keyIndices = new Object2IntOpenHashMap<>();
 
 	public static void clear() {
-		invalidators.clear();
+		invalidators = Lists.newArrayList();
 		stacks = List.of();
-		strictIndices.clear();
-		keyIndices.clear();
+		strictIndices = new Object2IntOpenCustomHashMap<>(new StrictHashStrategy());
+		keyIndices = new Object2IntOpenHashMap<>();
 	}
 
 	public static void reload() {
@@ -110,17 +112,18 @@ public class EmiStackList {
 
 		Set<EmiStack> added = new ObjectOpenCustomHashSet<>(new StrictHashStrategy());
 
-		stacks = Lists.newLinkedList();
+		List<EmiStack> built = Lists.newLinkedList();
 		for (IndexGroup group : groups) {
 			if (group.shouldDisplay()) {
 				for (EmiStack stack : group.stacks) {
 					if (!added.contains(stack)) {
-						stacks.add(stack);
+						built.add(stack);
 						added.add(stack);
 					}
 				}
 			}
 		}
+		stacks = built;
 	}
 
 	@SuppressWarnings({"unchecked"})
@@ -145,6 +148,7 @@ public class EmiStackList {
 	}
 
 	public static void bake() {
+		List<EmiStack> stacks = Lists.newArrayList(EmiStackList.stacks);
 		stacks.removeIf(s -> {
 			try {
 				if (s.isEmpty()) {
@@ -183,11 +187,16 @@ public class EmiStackList {
 				return false;
 			}
 		}).toList();
+		Object2IntMap<EmiStack> strictIndices = new Object2IntOpenCustomHashMap<>(new StrictHashStrategy());
+		Object2IntMap<Object> keyIndices = new Object2IntOpenHashMap<>();
 		for (int i = 0; i < stacks.size(); i++) {
 			EmiStack stack = stacks.get(i);
 			strictIndices.put(stack, i);
 			keyIndices.put(stack.getKey(), i);
 		}
+		EmiStackList.stacks = stacks;
+		EmiStackList.strictIndices = strictIndices;
+		EmiStackList.keyIndices = keyIndices;
 		bakeFiltered();
 	}
 

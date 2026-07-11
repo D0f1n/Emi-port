@@ -40,7 +40,8 @@ public class EmiTags {
 	public static final Map<Registry<?>, EmiRegistryAdapter<?>> ADAPTERS_BY_REGISTRY = Maps.newHashMap();
 	public static final Identifier HIDDEN_FROM_RECIPE_VIEWERS = EmiPort.id("c", "hidden_from_recipe_viewers");
 	// Tag -> client item definition id ("<ns>:tag/<registry>/<path>") for tags with a synthetic icon.
-	public static final Map<TagKey<?>, Identifier> MODELED_TAGS = Maps.newHashMap();
+	// Swapped whole on reload: the render thread reads it for tag icons while the reload thread rebuilds.
+	public static volatile Map<TagKey<?>, Identifier> MODELED_TAGS = Map.of();
 	private static final Map<Set<?>, List<EmiTagKey<?>>> CACHED_TAGS = Maps.newHashMap();
 	private static final Map<EmiTagKey<?>, List<?>> TAG_VALUES = Maps.newHashMap();
 	private static final Map<Identifier, List<EmiTagKey<?>>> SORTED_TAGS = Maps.newHashMap();
@@ -168,7 +169,7 @@ public class EmiTags {
 	 * {@code items/tag/<registry>/<namespaced tag path>.json}.
 	 */
 	private static void reloadTagModels() {
-		MODELED_TAGS.clear();
+		Map<TagKey<?>, Identifier> modeledTags = Maps.newHashMap();
 		Map<Identifier, ?> resources = Minecraft.getInstance().getResourceManager()
 			.listResources("items/tag", i -> i.getPath().endsWith(".json"));
 		for (Identifier id : resources.keySet()) {
@@ -179,9 +180,10 @@ public class EmiTags {
 			if (parts.length > 2) {
 				TagKey<?> key = TagKey.create(ResourceKey.createRegistryKey(EmiPort.id("minecraft", parts[1])),
 					EmiPort.id(id.getNamespace(), path.substring(5 + parts[1].length())));
-				MODELED_TAGS.put(key, EmiPort.id(id.getNamespace(), path));
+				modeledTags.put(key, EmiPort.id(id.getNamespace(), path));
 			}
 		}
+		MODELED_TAGS = modeledTags;
 	}
 
 	@SuppressWarnings({"unchecked", "rawtypes"})

@@ -36,7 +36,8 @@ import net.minecraft.resources.Identifier;
  */
 public class EmiRecipes {
 	public static volatile Worker activeWorker = null;
-	public static EmiRecipeManager manager = Manager.EMPTY;
+	// Published by the sort worker and the reload thread, read by the render thread.
+	public static volatile EmiRecipeManager manager = Manager.EMPTY;
 	public static List<Consumer<Consumer<EmiRecipe>>> lateRecipes = Lists.newArrayList();
 	public static List<Predicate<EmiRecipe>> invalidators = Lists.newArrayList();
 

@@ -28,7 +28,8 @@ public class EmiTagKey<T> {
 	// Concurrent: search workers construct TagQuery instances off-thread and populate this lazily.
 	public static final Map<TagKey<?>, EmiTagKey<?>> CACHE = Maps.newConcurrentMap();
 	private final TagKey<T> raw;
-	private List<T> cached;
+	// Recalculated by the reload thread while search workers call getList().
+	private volatile List<T> cached;
 
 	private EmiTagKey(TagKey<T> raw) {
 		this.raw = raw;
