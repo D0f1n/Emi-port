@@ -33,7 +33,7 @@ import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.Fluids;
 
 /**
- * The item/fluid index. Built post-world-load (see {@code EmiReload}) so that the {@code new ItemStack}
+ * The item/fluid index. Built post-world-load (see {@code EmiReloadManager}) so that the {@code new ItemStack}
  * calls it makes are legal on 26.1+ (ItemStackTemplate lifecycle).
  *
  * <p>Stage 3 scope: the config-driven index sources, datapack alias/index edits, and EmiHidden filtering

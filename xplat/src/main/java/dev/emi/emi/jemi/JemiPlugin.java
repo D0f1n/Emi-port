@@ -27,7 +27,7 @@ import dev.emi.emi.registry.EmiIngredientSerializers;
 import dev.emi.emi.registry.EmiRecipeFiller;
 import dev.emi.emi.registry.EmiRecipes;
 import dev.emi.emi.runtime.EmiLog;
-import dev.emi.emi.runtime.EmiReload;
+import dev.emi.emi.runtime.EmiReloadManager;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.JeiPlugin;
 import mezz.jei.api.constants.RecipeTypes;
@@ -76,7 +76,7 @@ public class JemiPlugin implements IModPlugin, EmiPlugin {
 	public void onRuntimeAvailable(IJeiRuntime runtime) {
 		JemiPlugin.runtime = runtime;
 		EmiLog.info("[JEMI] JEI runtime available, rebuilding the EMI index");
-		EmiReload.scheduleReload();
+		EmiReloadManager.reload();
 	}
 
 	@Override

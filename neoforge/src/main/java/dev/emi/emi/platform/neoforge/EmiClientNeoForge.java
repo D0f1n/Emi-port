@@ -2,7 +2,7 @@ package dev.emi.emi.platform.neoforge;
 
 import dev.emi.emi.network.EmiNetwork;
 import dev.emi.emi.platform.EmiClient;
-import dev.emi.emi.runtime.EmiReload;
+import dev.emi.emi.runtime.EmiReloadManager;
 import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -47,7 +47,7 @@ public class EmiClientNeoForge {
 			Minecraft client = Minecraft.getInstance();
 			if (client != null && client.level != null && client.player != null) {
 				pendingReload = false;
-				EmiReload.scheduleReload();
+				EmiReloadManager.reload();
 			}
 		}
 	}

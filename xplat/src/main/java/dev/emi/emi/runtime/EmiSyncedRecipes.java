@@ -27,9 +27,10 @@ public class EmiSyncedRecipes {
 			pending.clear();
 			EmiLog.info("Received " + recipes.size() + " synced recipes from the server");
 			// In singleplayer the harvest reads the integrated server directly; the synced copy is
-			// only the source of truth on a remote server, so only then is a re-harvest needed.
+			// only the source of truth on a remote server, so only then is a re-harvest needed. If
+			// the join reload is still running this restarts its worker instead of adding a pass.
 			if (Minecraft.getInstance().getSingleplayerServer() == null) {
-				EmiReload.scheduleReload();
+				EmiReloadManager.reload();
 			}
 		}
 	}

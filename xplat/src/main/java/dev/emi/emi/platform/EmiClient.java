@@ -13,6 +13,7 @@ import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.api.recipe.handler.StandardRecipeHandler;
 import dev.emi.emi.network.EmiNetwork;
 import dev.emi.emi.network.FillRecipeC2SPacket;
+import dev.emi.emi.runtime.EmiReloadManager;
 import dev.emi.emi.runtime.EmiSyncedRecipes;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -40,6 +41,7 @@ public class EmiClient {
 	public static void onDisconnect() {
 		onServer = false;
 		EmiSyncedRecipes.clear();
+		EmiReloadManager.clear();
 	}
 
 	public static <T extends AbstractContainerMenu> void sendFillRecipe(StandardRecipeHandler<T> handler,
