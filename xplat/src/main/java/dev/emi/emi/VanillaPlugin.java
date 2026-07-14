@@ -13,6 +13,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.mojang.datafixers.util.Pair;
 
+import dev.emi.emi.api.EmiEntrypoint;
 import dev.emi.emi.api.EmiPlugin;
 import dev.emi.emi.api.EmiRegistry;
 import dev.emi.emi.api.recipe.EmiCraftingRecipe;
@@ -112,6 +113,7 @@ import static dev.emi.emi.api.recipe.VanillaEmiRecipeCategories.*;
  * smithing) — synthesized categories (fuel, composting, brewing, anvil, grinding) land with the
  * category displays checkpoint. Custom mod display types are not mapped here. TODO(jemi)
  */
+@EmiEntrypoint
 public class VanillaPlugin implements EmiPlugin {
 	public static EmiRecipeCategory TAG = new EmiRecipeCategory(EmiPort.id("emi:tag"),
 		EmiStack.of(Items.NAME_TAG), EmiStack.of(Items.NAME_TAG), EmiRecipeSorting.none());

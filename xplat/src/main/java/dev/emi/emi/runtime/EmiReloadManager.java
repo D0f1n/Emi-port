@@ -7,8 +7,6 @@ import java.util.function.Consumer;
 import com.google.common.collect.Lists;
 
 import dev.emi.emi.EmiPort;
-import dev.emi.emi.VanillaPlugin;
-import dev.emi.emi.api.EmiPlugin;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.EmiRecipeCategory;
 import dev.emi.emi.api.stack.EmiRegistryAdapter;
@@ -22,6 +20,7 @@ import dev.emi.emi.jemi.JemiPlugin;
 import dev.emi.emi.platform.EmiAgnos;
 import dev.emi.emi.registry.EmiComparisonDefaults;
 import dev.emi.emi.registry.EmiIngredientSerializers;
+import dev.emi.emi.registry.EmiPluginContainer;
 import dev.emi.emi.registry.EmiRecipeFiller;
 import dev.emi.emi.registry.EmiRecipeSource;
 import dev.emi.emi.registry.EmiRecipes;
@@ -106,15 +105,24 @@ public class EmiReloadManager {
 		return status;
 	}
 
-	// Plugin discovery via loader entrypoints returns with a later round; the built-in vanilla
-	// plugin plus (when JEI is installed) the jemi bridge.
-	private static List<EmiPlugin> plugins() {
-		List<EmiPlugin> plugins = Lists.newArrayList(new VanillaPlugin());
+	/**
+	 * The plugins to load: discovered through the loader (the {@code "emi"} entrypoint on Fabric,
+	 * the {@code EmiEntrypoint} annotation scan on NeoForge), EMI's own first, plus the jemi
+	 * bridge when JEI is installed. Each is attributed to the mod that provided it, so a broken
+	 * third-party plugin fails with its own mod id and the reload continues.
+	 */
+	private static List<EmiPluginContainer> plugins() {
+		List<EmiPluginContainer> plugins = Lists.newArrayList(EmiAgnos.getPlugins().stream()
+			.sorted((a, b) -> Integer.compare(entrypointPriority(a), entrypointPriority(b))).toList());
 		if (EmiAgnos.isModLoaded("jei")) {
 			// JemiPlugin may only be classloaded behind this gate: it implements JEI interfaces.
-			plugins.add(new JemiPlugin());
+			plugins.add(new EmiPluginContainer(new JemiPlugin(), "jemi"));
 		}
 		return plugins;
+	}
+
+	private static int entrypointPriority(EmiPluginContainer container) {
+		return container.id().equals("emi") ? 0 : 1;
 	}
 
 	private static boolean adaptersRegistered = false;
@@ -202,17 +210,25 @@ public class EmiReloadManager {
 					EmiRecipeSource.harvest();
 					EmiComparisonDefaults.comparisons = new HashMap<>();
 					EmiRegistryImpl registry = new EmiRegistryImpl();
-					for (EmiPlugin plugin : plugins()) {
-						step(EmiPort.literal("Loading plugin " + plugin.getClass().getSimpleName()), 10_000);
+					// The original also runs an initialize(EmiInitRegistry) pre-registration phase
+					// over the containers; that registry surface returns with the plugin-API round.
+					for (EmiPluginContainer container : plugins()) {
+						step(EmiPort.literal("Loading plugin from " + container.id()), 10_000);
+						long start = System.currentTimeMillis();
 						try {
-							plugin.register(registry);
+							container.plugin().register(registry);
 						} catch (Throwable t) {
-							EmiLog.error("EMI plugin " + plugin.getClass().getName() + " failed to register", t);
+							// Catches Throwable on purpose: a plugin calling API this port has not
+							// restored yet dies with a LinkageError, not an Exception, and one broken
+							// plugin must not take down the reload.
+							EmiLog.error("Exception loading plugin provided by " + container.id(), t);
 							if (restart) {
 								continue outer;
 							}
 							continue;
 						}
+						EmiLog.info("Reloaded plugin from " + container.id() + " in "
+							+ (System.currentTimeMillis() - start) + "ms");
 						if (restart) {
 							continue outer;
 						}

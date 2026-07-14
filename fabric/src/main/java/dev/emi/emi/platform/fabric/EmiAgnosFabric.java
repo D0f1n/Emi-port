@@ -1,17 +1,24 @@
 package dev.emi.emi.platform.fabric;
 
+import java.util.List;
 import java.util.Optional;
 
+import com.google.common.collect.Lists;
+
 import dev.emi.emi.EmiRenderHelper;
+import dev.emi.emi.api.EmiPlugin;
 import dev.emi.emi.api.stack.FluidEmiStack;
 import dev.emi.emi.platform.EmiAgnos;
+import dev.emi.emi.registry.EmiPluginContainer;
 import dev.emi.emi.runtime.EmiDrawContext;
+import dev.emi.emi.runtime.EmiLog;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.transfer.v1.client.fluid.FluidVariantRendering;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidVariant;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidVariantAttributes;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
+import net.fabricmc.loader.api.entrypoint.EntrypointContainer;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.Holder;
@@ -106,5 +113,21 @@ public class EmiAgnosFabric extends EmiAgnos {
 	@Override
 	protected boolean canSendToPlayerAgnos(ServerPlayer player, CustomPacketPayload.Type<?> type) {
 		return ServerPlayNetworking.canSend(player, type);
+	}
+
+	@Override
+	protected List<EmiPluginContainer> getPluginsAgnos() {
+		List<EmiPluginContainer> list = Lists.newArrayList();
+		for (EntrypointContainer<EmiPlugin> container : FabricLoader.getInstance()
+				.getEntrypointContainers("emi", EmiPlugin.class)) {
+			try {
+				list.add(new EmiPluginContainer(container.getEntrypoint(),
+					container.getProvider().getMetadata().getId()));
+			} catch (Throwable t) {
+				EmiLog.error("Critical exception thrown when constructing EMI Plugin from mod "
+					+ container.getProvider().getMetadata().getId(), t);
+			}
+		}
+		return list;
 	}
 }

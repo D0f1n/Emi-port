@@ -116,4 +116,15 @@ public abstract class EmiAgnos {
 	}
 
 	protected abstract boolean canSendToPlayerAgnos(ServerPlayer player, CustomPacketPayload.Type<?> type);
+
+	/**
+	 * The EMI plugins discovered through the loader: the {@code "emi"} entrypoint on Fabric, the
+	 * {@link dev.emi.emi.api.EmiEntrypoint EmiEntrypoint} annotation scan on NeoForge. Each plugin
+	 * is attributed to the mod that provided it.
+	 */
+	public static java.util.List<dev.emi.emi.registry.EmiPluginContainer> getPlugins() {
+		return delegate.getPluginsAgnos();
+	}
+
+	protected abstract java.util.List<dev.emi.emi.registry.EmiPluginContainer> getPluginsAgnos();
 }
