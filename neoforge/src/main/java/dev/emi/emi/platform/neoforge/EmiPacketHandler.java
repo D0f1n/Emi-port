@@ -1,5 +1,6 @@
 package dev.emi.emi.platform.neoforge;
 
+import dev.emi.emi.network.CommandS2CPacket;
 import dev.emi.emi.network.CreateItemC2SPacket;
 import dev.emi.emi.network.EmiNetwork;
 import dev.emi.emi.network.EmiPacket;
@@ -20,6 +21,7 @@ public class EmiPacketHandler {
 		registrar.playToServer(EmiNetwork.FILL_RECIPE, FillRecipeC2SPacket.CODEC, EmiPacketHandler::handleServerbound);
 		registrar.playToServer(EmiNetwork.CREATE_ITEM, CreateItemC2SPacket.CODEC, EmiPacketHandler::handleServerbound);
 		registrar.playToClient(EmiNetwork.PING, PingS2CPacket.CODEC, EmiPacketHandler::handleClientbound);
+		registrar.playToClient(EmiNetwork.COMMAND, CommandS2CPacket.CODEC, EmiPacketHandler::handleClientbound);
 		registrar.playToClient(EmiNetwork.SYNC_RECIPES, RecipeSyncS2CPacket.CODEC, EmiPacketHandler::handleClientbound);
 	}
 

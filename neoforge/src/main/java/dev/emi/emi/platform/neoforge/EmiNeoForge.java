@@ -3,11 +3,13 @@ package dev.emi.emi.platform.neoforge;
 import dev.emi.emi.network.EmiNetwork;
 import dev.emi.emi.platform.EmiMain;
 import dev.emi.emi.platform.EmiServer;
+import dev.emi.emi.registry.EmiCommands;
 import dev.emi.emi.runtime.EmiLog;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
@@ -25,11 +27,16 @@ public class EmiNeoForge {
 		});
 		modEventBus.addListener(EmiPacketHandler::init);
 		NeoForge.EVENT_BUS.addListener(EmiNeoForge::onPlayerLoggedIn);
+		NeoForge.EVENT_BUS.addListener(EmiNeoForge::onRegisterCommands);
 	}
 
 	private static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
 		if (event.getEntity() instanceof ServerPlayer player) {
 			EmiServer.onPlayerJoin(player);
 		}
+	}
+
+	private static void onRegisterCommands(RegisterCommandsEvent event) {
+		EmiCommands.registerCommands(event.getDispatcher());
 	}
 }

@@ -12,8 +12,7 @@ import net.minecraft.server.level.ServerPlayer;
  * are loader-specific (Fabric Networking API / NeoForge payload API); the loaders inject their
  * senders through {@link #initServer} and {@link #initClient}.
  *
- * <p>Port note: the original's {@code CommandS2CPacket} (the /emi command and BoM navigation) and
- * the chess packets return with their subsystems. TODO(polish)
+ * <p>Port note: the original's chess packets return with their subsystem. TODO(polish)
  */
 public class EmiNetwork {
 	// Identifier.parse, not EmiPort.id: this class initializes on dedicated servers, where EmiPort
@@ -21,6 +20,7 @@ public class EmiNetwork {
 	public static final CustomPacketPayload.Type<FillRecipeC2SPacket> FILL_RECIPE = new CustomPacketPayload.Type<>(Identifier.parse("emi:fill_recipe"));
 	public static final CustomPacketPayload.Type<CreateItemC2SPacket> CREATE_ITEM = new CustomPacketPayload.Type<>(Identifier.parse("emi:create_item"));
 	public static final CustomPacketPayload.Type<PingS2CPacket> PING = new CustomPacketPayload.Type<>(Identifier.parse("emi:ping"));
+	public static final CustomPacketPayload.Type<CommandS2CPacket> COMMAND = new CustomPacketPayload.Type<>(Identifier.parse("emi:command"));
 	public static final CustomPacketPayload.Type<RecipeSyncS2CPacket> SYNC_RECIPES = new CustomPacketPayload.Type<>(Identifier.parse("emi:sync_recipes"));
 	private static BiConsumer<ServerPlayer, EmiPacket> clientSender;
 	private static Consumer<EmiPacket> serverSender;

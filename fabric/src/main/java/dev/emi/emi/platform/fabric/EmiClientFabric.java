@@ -20,6 +20,7 @@ public class EmiClientFabric implements ClientModInitializer {
 			}
 		});
 		registerClientReceiver(EmiNetwork.PING);
+		registerClientReceiver(EmiNetwork.COMMAND);
 		registerClientReceiver(EmiNetwork.SYNC_RECIPES);
 		// Build the stack index on world join (post-world-load), mirroring REI's "entries built on world
 		// join" timing. The build runs on the reload worker thread inside EmiReloadManager.
