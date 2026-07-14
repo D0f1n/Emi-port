@@ -5,13 +5,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 
 import dev.emi.emi.EmiPort;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiRegistryAdapter;
 import dev.emi.emi.api.stack.EmiStack;
+import dev.emi.emi.data.EmiData;
+import dev.emi.emi.data.IndexStackData;
 import dev.emi.emi.runtime.EmiLog;
 import it.unimi.dsi.fastutil.Hash;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
@@ -37,8 +41,9 @@ import net.minecraft.world.level.material.Fluids;
  * The item/fluid index. Built post-world-load (see {@code EmiReloadManager}) so that the {@code new ItemStack}
  * calls it makes are legal on 26.1+ (ItemStackTemplate lifecycle).
  *
- * <p>Stage 3 scope: the config-driven index sources, datapack alias/index edits, and EmiHidden filtering
- * from the original are dropped — this builds the full registry + creative-tab + fluid set, deduped.
+ * <p>Stage 3 scope: the config-driven index sources and EmiHidden filtering from the original are
+ * dropped — this builds the full registry + creative-tab + fluid set, deduped, then applies the
+ * datapack {@code index/stacks} edits.
  */
 public class EmiStackList {
 	private static final TagKey<Item> ITEM_HIDDEN = TagKey.create(EmiPort.getItemRegistry().key(), EmiTags.HIDDEN_FROM_RECIPE_VIEWERS);
@@ -189,6 +194,43 @@ public class EmiStackList {
 				return true;
 			}
 		});
+		for (Supplier<IndexStackData> supplier : EmiData.stackData) {
+			IndexStackData ssd = supplier.get();
+			if (!ssd.removed().isEmpty()) {
+				Set<EmiStack> removed = Sets.newHashSet();
+				for (EmiIngredient invalidator : ssd.removed()) {
+					for (EmiStack stack : invalidator.getEmiStacks()) {
+						removed.add(stack.copy().comparison(c -> EmiPort.compareStrict()));
+					}
+				}
+				stacks.removeAll(removed);
+			}
+			if (!ssd.filters().isEmpty()) {
+				stacks.removeIf(s -> {
+					String id = "" + s.getId();
+					for (IndexStackData.Filter filter : ssd.filters()) {
+						if (filter.filter().test(id)) {
+							return true;
+						}
+					}
+					return false;
+				});
+			}
+			for (IndexStackData.Added added : ssd.added()) {
+				if (added.added().isEmpty()) {
+					continue;
+				}
+				if (added.after().isEmpty()) {
+					stacks.add(added.added().getEmiStacks().get(0));
+				} else {
+					int i = stacks.indexOf(added.after());
+					if (i == -1) {
+						i = stacks.size() - 1;
+					}
+					stacks.add(i + 1, added.added().getEmiStacks().get(0));
+				}
+			}
+		}
 		stacks = stacks.stream().filter(stack -> {
 			String name = "Unknown";
 			String id = "unknown";
