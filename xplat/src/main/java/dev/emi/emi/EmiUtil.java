@@ -11,9 +11,9 @@ import dev.emi.emi.api.recipe.handler.EmiCraftContext;
 import dev.emi.emi.api.recipe.handler.EmiRecipeHandler;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
+import dev.emi.emi.data.EmiRecipeCategoryProperties;
 import dev.emi.emi.platform.EmiAgnos;
 import dev.emi.emi.registry.EmiRecipeFiller;
-import dev.emi.emi.registry.EmiRecipes;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.resources.Identifier;
@@ -69,8 +69,6 @@ public class EmiUtil {
 				preferredWeight = weight;
 				preferred = recipe;
 			} else if (weight == preferredWeight) {
-				// The original tie-breaks on the configured category order; the port has no
-				// category ordering config yet, so registration order stands in. TODO(polish)
 				if (categoryOrder(recipe) < categoryOrder(preferred)) {
 					preferredWeight = weight;
 					preferred = recipe;
@@ -81,8 +79,7 @@ public class EmiUtil {
 	}
 
 	private static int categoryOrder(EmiRecipe recipe) {
-		int index = EmiRecipes.categories.indexOf(recipe.getCategory());
-		return index < 0 ? Integer.MAX_VALUE : index;
+		return EmiRecipeCategoryProperties.getOrder(recipe.getCategory());
 	}
 
 	public static String subId(Identifier id) {

@@ -14,6 +14,7 @@ import dev.emi.emi.api.stack.EmiRegistryAdapter;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.stack.ListEmiIngredient;
 import dev.emi.emi.api.stack.TagEmiIngredient;
+import dev.emi.emi.data.TagExclusions;
 import dev.emi.emi.platform.EmiAgnos;
 import dev.emi.emi.runtime.EmiTagKey;
 import dev.emi.emi.util.InheritanceMap;
@@ -25,8 +26,8 @@ import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.block.Block;
 
 /**
- * Tag resolution side of the Stage 3 layer. The config/hidden/datapack-exclusion filters from the
- * original are dropped for now (no out-of-scope subsystems).
+ * Tag resolution side of the Stage 3 layer. Datapack exclusions ({@code tag/exclusions}) filter
+ * out junk tags before consolidation, as in the original.
  *
  * <p>Synthetic tag icons: the original registered {@code models/tag/**} through the Model Loading
  * API and rendered the baked models directly — both halves of that path are gone on 26.2. Instead
@@ -38,6 +39,8 @@ import net.minecraft.world.level.block.Block;
 public class EmiTags {
 	public static final InheritanceMap<EmiRegistryAdapter<?>> ADAPTERS_BY_CLASS = new InheritanceMap<>(Maps.newHashMap());
 	public static final Map<Registry<?>, EmiRegistryAdapter<?>> ADAPTERS_BY_REGISTRY = Maps.newHashMap();
+	// Written by EmiTagExclusionsLoader on resource reload, read by the reload worker.
+	public static volatile TagExclusions exclusions = new TagExclusions();
 	public static final Identifier HIDDEN_FROM_RECIPE_VIEWERS = EmiPort.id("c", "hidden_from_recipe_viewers");
 	// Tag -> client item definition id ("<ns>:tag/<registry>/<path>") for tags with a synthetic icon.
 	// Swapped whole on reload: the render thread reads it for tag icons while the reload thread rebuilds.
@@ -189,8 +192,9 @@ public class EmiTags {
 	@SuppressWarnings({"unchecked", "rawtypes"})
 	private static <T> void reloadTags(Registry<T> registry) {
 		Set<T> hidden = EmiTagKey.of(registry, HIDDEN_FROM_RECIPE_VIEWERS).getSet();
+		Identifier rid = registry.key().identifier();
 		List<EmiTagKey<T>> tags = EmiTagKey.fromRegistry(registry)
-			.filter(key -> !hidden.containsAll(key.getList()))
+			.filter(key -> !exclusions.contains(rid, key.id()) && !hidden.containsAll(key.getList()))
 			.toList();
 		tags = consolodateTags(tags);
 		for (EmiTagKey<T> key : tags) {

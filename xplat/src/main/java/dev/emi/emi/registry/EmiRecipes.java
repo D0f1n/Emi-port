@@ -20,6 +20,7 @@ import dev.emi.emi.api.recipe.EmiRecipeManager;
 import dev.emi.emi.api.recipe.EmiRecipeSorting;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
+import dev.emi.emi.data.EmiRecipeCategoryProperties;
 import dev.emi.emi.runtime.EmiLog;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
@@ -30,9 +31,8 @@ import net.minecraft.resources.Identifier;
  * The recipe registry: plugin-registered categories, workstations and recipes, plus the baked
  * multi-index lookup manager (by input / output / category / id).
  *
- * <p>Trimmed against the original for the recipe round: the data-driven layer (EmiData recipe
- * additions/filters, category property overrides), stack hiding and recipe decorators return with
- * later rounds.
+ * <p>Trimmed against the original for the recipe round: the data-driven recipe additions/filters,
+ * stack hiding and recipe decorators return with later rounds.
  */
 public class EmiRecipes {
 	public static volatile Worker activeWorker = null;
@@ -60,6 +60,7 @@ public class EmiRecipes {
 
 	public static void bake() {
 		long start = System.currentTimeMillis();
+		categories.sort((a, b) -> EmiRecipeCategoryProperties.getOrder(a) - EmiRecipeCategoryProperties.getOrder(b));
 		List<EmiRecipe> filtered = recipes.stream().filter(r -> {
 			for (Predicate<EmiRecipe> predicate : invalidators) {
 				if (predicate.test(r)) {
@@ -141,7 +142,7 @@ public class EmiRecipes {
 
 			for (EmiRecipeCategory category : byCategory.keySet()) {
 				List<EmiRecipe> cRecipes = byCategory.get(category);
-				Comparator<EmiRecipe> sort = category.getSort();
+				Comparator<EmiRecipe> sort = EmiRecipeCategoryProperties.getSort(category);
 				if (doSort && sort != null && sort != EmiRecipeSorting.none()) {
 					cRecipes = cRecipes.stream().sorted(sort).collect(Collectors.toList());
 					EmiRecipeSorter.clear();

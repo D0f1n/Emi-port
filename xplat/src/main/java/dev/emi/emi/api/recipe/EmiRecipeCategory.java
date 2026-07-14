@@ -11,6 +11,7 @@ import dev.emi.emi.EmiPort;
 import dev.emi.emi.EmiUtil;
 import dev.emi.emi.api.render.EmiRenderable;
 import dev.emi.emi.api.stack.EmiStack;
+import dev.emi.emi.data.EmiRecipeCategoryProperties;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -60,13 +61,11 @@ public class EmiRecipeCategory implements EmiRenderable {
 
 	@Override
 	public void render(GuiGraphicsExtractor draw, int x, int y, float delta) {
-		// The original resolves data-driven icon overrides (EmiRecipeCategoryProperties) here; those
-		// return with the polish round, so the icon renders directly.
-		icon.render(draw, x, y, delta);
+		EmiRecipeCategoryProperties.getIcon(this).render(draw, x, y, delta);
 	}
 
 	public void renderSimplified(GuiGraphicsExtractor draw, int x, int y, float delta) {
-		simplified.render(draw, x, y, delta);
+		EmiRecipeCategoryProperties.getSimplifiedIcon(this).render(draw, x, y, delta);
 	}
 
 	public List<ClientTooltipComponent> getTooltip() {
