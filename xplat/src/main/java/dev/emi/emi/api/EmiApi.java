@@ -18,6 +18,7 @@ import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.stack.EmiStackInteraction;
 import dev.emi.emi.api.stack.TagEmiIngredient;
+import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.recipe.EmiTagRecipe;
 import dev.emi.emi.registry.EmiRecipes;
 import dev.emi.emi.registry.EmiStackList;
@@ -42,6 +43,14 @@ public class EmiApi {
 
 	public static List<EmiStack> getIndexStacks() {
 		return EmiStackList.stacks;
+	}
+
+	public static boolean isCheatMode() {
+		return switch (EmiConfig.cheatMode) {
+			case TRUE -> true;
+			case CREATIVE -> client.player == null || client.player.isCreative();
+			case FALSE -> false;
+		};
 	}
 
 	public static @Nullable AbstractContainerScreen<?> getHandledScreen() {

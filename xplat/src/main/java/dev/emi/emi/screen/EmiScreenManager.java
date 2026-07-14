@@ -25,6 +25,9 @@ import dev.emi.emi.config.SidebarSettings;
 import dev.emi.emi.config.SidebarSide;
 import dev.emi.emi.config.SidebarTheme;
 import dev.emi.emi.config.SidebarType;
+import dev.emi.emi.network.CreateItemC2SPacket;
+import dev.emi.emi.network.EmiNetwork;
+import dev.emi.emi.platform.EmiClient;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.registry.EmiStackProviders;
 import dev.emi.emi.runtime.EmiDrawContext;
@@ -41,12 +44,16 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 
@@ -243,6 +250,12 @@ public class EmiScreenManager {
 		try {
 			int mx = (int) mouseX;
 			int my = (int) mouseY;
+			if (EmiApi.isCheatMode() && EmiConfig.deleteCursorStack.matchesMouse(button)) {
+				if (deleteCursor(mx, my)) {
+					// Returning false here makes the handled screen do something and removes a bug, oh well.
+					return false;
+				}
+			}
 			if (!pressedStack.isEmpty()) {
 				if (!draggedStack.isEmpty()) {
 					SidebarPanel panel = getHoveredPanel(mx, my);
@@ -327,6 +340,11 @@ public class EmiScreenManager {
 		if (isDisabled()) {
 			return false;
 		}
+		if (EmiApi.isCheatMode() && EmiConfig.deleteCursorStack.matchesKey(event.key(), event.scancode())) {
+			if (deleteCursor(lastMouseX, lastMouseY)) {
+				return true;
+			}
+		}
 		Function<EmiBind, Boolean> function = bind -> bind.matchesKey(event.key(), event.scancode());
 		EmiStackInteraction hovered = getHoveredStack(lastMouseX, lastMouseY, true);
 		// The original routes recipe-screen keys through the hovered SlotWidget; the port's global
@@ -391,6 +409,21 @@ public class EmiScreenManager {
 		EmiIngredient ingredient = stack.getStack();
 		EmiRecipe context = EmiApi.getRecipeContext(ingredient);
 		if (!ingredient.isEmpty()) {
+			if (EmiApi.isCheatMode()) {
+				if (ingredient.getEmiStacks().size() == 1 && stack instanceof SidebarEmiStackInteraction) {
+					if (function.apply(EmiConfig.cheatOneToInventory)) {
+						return give(ingredient.getEmiStacks().get(0), 1, 0);
+					} else if (function.apply(EmiConfig.cheatStackToInventory)) {
+						return give(ingredient.getEmiStacks().get(0),
+								ingredient.getEmiStacks().get(0).getItemStack().getMaxStackSize(), 0);
+					} else if (function.apply(EmiConfig.cheatOneToCursor)) {
+						return give(ingredient.getEmiStacks().get(0), 1, 1);
+					} else if (function.apply(EmiConfig.cheatStackToCursor)) {
+						return give(ingredient.getEmiStacks().get(0),
+								ingredient.getEmiStacks().get(0).getItemStack().getMaxStackSize(), 1);
+					}
+				}
+			}
 			if (function.apply(EmiConfig.viewRecipes)) {
 				EmiApi.displayRecipes(ingredient);
 				if (stack.getRecipeContext() != null) {
@@ -413,7 +446,7 @@ public class EmiScreenManager {
 		return false;
 	}
 
-	/** Binds that act on a recipe context: favoriting a recipe's output with the recipe attached. */
+	/** Binds that act on a recipe context: favoriting a recipe's output, copying the recipe id. */
 	public static boolean recipeInteraction(EmiRecipe recipe, Function<EmiBind, Boolean> function) {
 		if (recipe == null) {
 			return false;
@@ -422,6 +455,58 @@ public class EmiScreenManager {
 			EmiFavorites.addFavorite(recipe.getOutputs().get(0), recipe);
 			repopulatePanels(SidebarType.FAVORITES);
 			return true;
+		} else if (function.apply(EmiConfig.copyId)) {
+			client().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0f));
+			client().keyboardHandler.setClipboard("" + recipe.getId());
+			return true;
+		}
+		return false;
+	}
+
+	private static boolean give(EmiStack stack, int amount, int mode) {
+		if (stack.getItemStack().isEmpty()) {
+			return false;
+		}
+		ItemStack is = stack.getItemStack().copy();
+		is.setCount(amount);
+		Minecraft client = client();
+		if (mode == 1 && client.player.getAbilities().instabuild
+				&& client.gui.screen() instanceof CreativeModeInventoryScreen) {
+			client.player.containerMenu.setCarried(is);
+			return true;
+		}
+		if (EmiClient.onServer) {
+			EmiNetwork.sendToServer(new CreateItemC2SPacket(mode, is));
+			return true;
+		} else {
+			if (!is.isEmpty()) {
+				// The original serialized the component patch into the command via
+				// ItemInput.serialize, which 26.2 removed; rather than give a wrong plain variant
+				// of a component-carrying stack, decline. TODO(recipe-context): revisit if a
+				// component stringifier returns.
+				if (!is.getComponentsPatch().isEmpty()) {
+					return false;
+				}
+				String command = "give @s " + BuiltInRegistries.ITEM.getKey(is.getItem());
+				command += " " + amount;
+				if (command.length() < 256) {
+					client.player.connection.sendCommand(command);
+					return true;
+				}
+			}
+			return false;
+		}
+	}
+
+	private static boolean deleteCursor(int mx, int my) {
+		if (client().gui.screen() instanceof AbstractContainerScreen<?> handled) {
+			ItemStack cursor = handled.getMenu().getCarried();
+			ScreenSpace space = getHoveredSpace(mx, my);
+			if (!cursor.isEmpty() && space != null && space.getType() == SidebarType.INDEX) {
+				handled.getMenu().setCarried(ItemStack.EMPTY);
+				EmiNetwork.sendToServer(new CreateItemC2SPacket(1, ItemStack.EMPTY));
+				return true;
+			}
 		}
 		return false;
 	}
