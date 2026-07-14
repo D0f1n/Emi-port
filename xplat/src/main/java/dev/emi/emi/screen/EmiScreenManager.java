@@ -2,14 +2,17 @@ package dev.emi.emi.screen;
 
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 import org.jetbrains.annotations.Nullable;
 
 import dev.emi.emi.EmiPort;
 import dev.emi.emi.EmiRenderHelper;
+import dev.emi.emi.EmiUtil;
 import dev.emi.emi.api.EmiApi;
 import dev.emi.emi.api.recipe.EmiPlayerInventory;
 import dev.emi.emi.api.recipe.EmiRecipe;
+import dev.emi.emi.api.recipe.handler.EmiCraftContext;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.stack.EmiStackInteraction;
@@ -28,6 +31,7 @@ import dev.emi.emi.config.SidebarType;
 import dev.emi.emi.network.CreateItemC2SPacket;
 import dev.emi.emi.network.EmiNetwork;
 import dev.emi.emi.platform.EmiClient;
+import dev.emi.emi.registry.EmiRecipeFiller;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.registry.EmiStackProviders;
 import dev.emi.emi.runtime.EmiDrawContext;
@@ -409,6 +413,9 @@ public class EmiScreenManager {
 		EmiIngredient ingredient = stack.getStack();
 		EmiRecipe context = EmiApi.getRecipeContext(ingredient);
 		if (!ingredient.isEmpty()) {
+			if (craftInteraction(ingredient, () -> context, stack, function)) {
+				return true;
+			}
 			if (EmiApi.isCheatMode()) {
 				if (ingredient.getEmiStacks().size() == 1 && stack instanceof SidebarEmiStackInteraction) {
 					if (function.apply(EmiConfig.cheatOneToInventory)) {
@@ -439,9 +446,68 @@ public class EmiScreenManager {
 				return true;
 			}
 			// The original's viewStackTree bind sets the BoM goal here. TODO(bom)
+			Supplier<EmiRecipe> supplier = () -> {
+				return EmiUtil.getPreferredRecipe(ingredient, lastPlayerInventory, true);
+			};
+			if (craftInteraction(ingredient, supplier, stack, function)) {
+				return true;
+			}
 		}
 		if (recipeInteraction(context, function)) {
 			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * The sidebar craft binds: fill the open screen's grid with the hovered craftable's
+	 * ingredients, routed through the recipe-handler fill path.
+	 */
+	private static boolean craftInteraction(EmiIngredient ingredient, Supplier<EmiRecipe> contextSupplier,
+			EmiStackInteraction stack, Function<EmiBind, Boolean> function) {
+		if (!(stack instanceof SidebarEmiStackInteraction)) {
+			return false;
+		}
+		EmiCraftContext.Destination destination = null;
+		boolean all = false;
+		if (function.apply(EmiConfig.craftAllToInventory)) {
+			destination = EmiCraftContext.Destination.INVENTORY;
+			all = true;
+		} else if (function.apply(EmiConfig.craftOneToInventory)) {
+			destination = EmiCraftContext.Destination.INVENTORY;
+		} else if (function.apply(EmiConfig.craftOneToCursor)) {
+			destination = EmiCraftContext.Destination.CURSOR;
+		} else if (function.apply(EmiConfig.craftAll)) {
+			destination = EmiCraftContext.Destination.NONE;
+			all = true;
+		} else if (function.apply(EmiConfig.craftOne)) {
+			destination = EmiCraftContext.Destination.NONE;
+		}
+		if (destination != null) {
+			EmiRecipe context = contextSupplier.get();
+			if (context != null) {
+				if (EmiConfig.miscraftPrevention) {
+					ScreenSpace space = getHoveredSpace(lastMouseX, lastMouseY);
+					if (space != null && (space.getType() == SidebarType.CRAFTABLES
+							|| space.getType() == SidebarType.CRAFT_HISTORY)) {
+						lastHoveredCraftableOffset = space.getRawOffsetFromMouse(lastMouseX, lastMouseY);
+						if (lastHoveredCraftableOffset != -1) {
+							lastHoveredCraftableSturdy = lastHoveredCraftable != null;
+							lastHoveredCraftable = stack;
+							if (!all) {
+								lastHoveredCraftableSturdy = true;
+							}
+						}
+					}
+				}
+				// The original caps the amount by EmiFavorite.Synthetic batches here. TODO(bom)
+				int amount = all ? Integer.MAX_VALUE : 1;
+				if (EmiRecipeFiller.performFill(context, EmiApi.getHandledScreen(),
+						EmiCraftContext.Type.CRAFTABLE, destination, amount)) {
+					client().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0f));
+					return true;
+				}
+			}
 		}
 		return false;
 	}

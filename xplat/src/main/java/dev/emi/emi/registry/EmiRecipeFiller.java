@@ -18,25 +18,26 @@ import dev.emi.emi.api.recipe.handler.StandardRecipeHandler;
 import dev.emi.emi.api.stack.Comparison;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
+import dev.emi.emi.handler.CoercedRecipeHandler;
+import dev.emi.emi.mixin.accessor.ResultSlotAccessor;
 import dev.emi.emi.runtime.EmiLog;
 import dev.emi.emi.runtime.EmiSidebars;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.CraftingContainer;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.inventory.MenuType;
+import net.minecraft.world.inventory.ResultSlot;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 
-/**
- * Port note: the original's {@code CoercedRecipeHandler} (fills modded screens by finding their
- * crafting result slot) and the {@code extraHandlers} hook return with the jemi round. TODO(jemi)
- */
 public class EmiRecipeFiller {
 	public static Map<MenuType<?>, List<EmiRecipeHandler<?>>> handlers = Maps.newHashMap();
 	/** Fallback handler source for recipes without a registered handler; set by the jemi bridge. */
@@ -83,24 +84,38 @@ public class EmiRecipeFiller {
 			if ((type != null || menu instanceof InventoryMenu) && handlers.containsKey(type)) {
 				return (List<EmiRecipeHandler<T>>) (List<?>) handlers.get(type);
 			}
+			// No handler registered for this menu: coerce one from a vanilla crafting result slot,
+			// which gives modded crafting tables the green fill button for free.
+			for (Slot slot : menu.slots) {
+				if (slot instanceof ResultSlot crs) {
+					CraftingContainer inv = ((ResultSlotAccessor) crs).getCraftSlots();
+					if (inv != null && inv.getWidth() > 0 && inv.getHeight() > 0) {
+						return List.of(new CoercedRecipeHandler<T>(crs));
+					}
+				}
+			}
 		}
 		return List.of();
 	}
 
 	@SuppressWarnings("unchecked")
 	public static <T extends AbstractContainerMenu> @Nullable EmiRecipeHandler<T> getFirstValidHandler(EmiRecipe recipe, AbstractContainerScreen<T> screen) {
+		EmiRecipeHandler<T> ret = null;
 		for (EmiRecipeHandler<T> handler : getAllHandlers(screen)) {
 			if (handler.supportsRecipe(recipe)) {
-				return handler;
+				ret = handler;
+				break;
 			}
 		}
-		if (screen != null) {
-			EmiRecipeHandler<?> extra = extraHandlers.apply(screen.getMenu(), recipe);
-			if (extra != null && extra.supportsRecipe(recipe)) {
-				return (EmiRecipeHandler<T>) extra;
+		// A coerced handler is a guess; anything the extra-handler hook (the jemi bridge) offers
+		// wins over it everywhere but the player inventory, as the original.
+		if (screen != null && (ret == null || (ret instanceof CoercedRecipeHandler && !(screen instanceof InventoryScreen)))) {
+			EmiRecipeHandler<T> extra = (EmiRecipeHandler<T>) extraHandlers.apply(screen.getMenu(), recipe);
+			if (extra != null) {
+				ret = extra;
 			}
 		}
-		return null;
+		return ret;
 	}
 
 	public static <T extends AbstractContainerMenu> boolean performFill(EmiRecipe recipe, AbstractContainerScreen<T> screen,
