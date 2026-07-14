@@ -37,6 +37,7 @@ import dev.emi.emi.registry.EmiStackProviders;
 import dev.emi.emi.runtime.EmiDrawContext;
 import dev.emi.emi.runtime.EmiFavorite;
 import dev.emi.emi.runtime.EmiFavorites;
+import dev.emi.emi.runtime.EmiHidden;
 import dev.emi.emi.runtime.EmiHistory;
 import dev.emi.emi.runtime.EmiReloadManager;
 import dev.emi.emi.runtime.EmiSidebars;
@@ -405,14 +406,24 @@ public class EmiScreenManager {
 	}
 
 	/**
-	 * Binds that act on the hovered stack, in the original's precedence order. The edit-mode hide
-	 * binds come first in the original; they return with EmiData. The craft and cheat binds join
-	 * with their rounds.
+	 * Binds that act on the hovered stack, in the original's precedence order: the edit-mode hide
+	 * binds first, then craft, cheat, view and favorite binds.
 	 */
 	public static boolean stackInteraction(EmiStackInteraction stack, Function<EmiBind, Boolean> function) {
 		EmiIngredient ingredient = stack.getStack();
 		EmiRecipe context = EmiApi.getRecipeContext(ingredient);
 		if (!ingredient.isEmpty()) {
+			if (EmiConfig.editMode) {
+				if (stack instanceof SidebarEmiStackInteraction sesi && sesi.getType() == SidebarType.INDEX) {
+					if (function.apply(EmiConfig.hideStack)) {
+						EmiHidden.setVisibility(sesi.getStack(), !EmiHidden.isHidden(sesi.getStack()), false);
+						return true;
+					} else if (function.apply(EmiConfig.hideStackById)) {
+						EmiHidden.setVisibility(sesi.getStack(), !EmiHidden.isHidden(sesi.getStack()), true);
+						return true;
+					}
+				}
+			}
 			if (craftInteraction(ingredient, () -> context, stack, function)) {
 				return true;
 			}
@@ -1215,8 +1226,13 @@ public class EmiScreenManager {
 					}
 					int cx = space.getX(xo, yo);
 					int cy = space.getY(xo, yo);
-					stacks.get(i++).render(graphics, cx + 1, cy + 1, delta,
+					EmiIngredient stack = stacks.get(i++);
+					stack.render(graphics, cx + 1, cy + 1, delta,
 						EmiIngredient.RENDER_ICON | EmiIngredient.RENDER_AMOUNT | EmiIngredient.RENDER_INGREDIENT);
+					if (getType() == SidebarType.INDEX && EmiConfig.editMode && EmiHidden.isHidden(stack)) {
+						// TODO(bom): the original also highlights BoM-defaulted stacks in green here.
+						context.fill(cx, cy, ENTRY_SIZE, ENTRY_SIZE, 0x33ff0000);
+					}
 				}
 			}
 		}

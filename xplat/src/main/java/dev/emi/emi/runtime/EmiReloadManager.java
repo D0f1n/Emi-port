@@ -7,6 +7,7 @@ import java.util.function.Consumer;
 import com.google.common.collect.Lists;
 
 import dev.emi.emi.EmiPort;
+import dev.emi.emi.api.EmiInitRegistry;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.EmiRecipeCategory;
 import dev.emi.emi.api.stack.EmiRegistryAdapter;
@@ -20,6 +21,7 @@ import dev.emi.emi.jemi.JemiPlugin;
 import dev.emi.emi.platform.EmiAgnos;
 import dev.emi.emi.registry.EmiComparisonDefaults;
 import dev.emi.emi.registry.EmiIngredientSerializers;
+import dev.emi.emi.registry.EmiInitRegistryImpl;
 import dev.emi.emi.registry.EmiPluginContainer;
 import dev.emi.emi.registry.EmiRecipeFiller;
 import dev.emi.emi.registry.EmiRecipeSource;
@@ -180,6 +182,7 @@ public class EmiReloadManager {
 					EmiRecipeFiller.clear();
 					EmiStackProviders.clear();
 					EmiRecipeSource.clear();
+					EmiHidden.clear();
 					if (clear) {
 						clear = false;
 						continue;
@@ -191,6 +194,24 @@ public class EmiReloadManager {
 					}
 					registerAdapters();
 					registerSerializers();
+					List<EmiPluginContainer> plugins = plugins();
+					EmiInitRegistry initRegistry = new EmiInitRegistryImpl();
+					for (EmiPluginContainer container : plugins) {
+						step(EmiPort.literal("Initializing plugin from " + container.id()), 5_000);
+						long start = System.currentTimeMillis();
+						try {
+							container.plugin().initialize(initRegistry);
+						} catch (Throwable t) {
+							EmiLog.error("Exception initializing plugin provided by " + container.id(), t);
+							if (restart) {
+								continue outer;
+							}
+							continue;
+						}
+						EmiLog.info("Initialized plugin from " + container.id() + " in "
+							+ (System.currentTimeMillis() - start) + "ms");
+					}
+					EmiHidden.reload();
 					step(EmiPort.literal("Processing tags"));
 					EmiTags.reload();
 					step(EmiPort.literal("Constructing index"));
@@ -210,9 +231,7 @@ public class EmiReloadManager {
 					EmiRecipeSource.harvest();
 					EmiComparisonDefaults.comparisons = new HashMap<>();
 					EmiRegistryImpl registry = new EmiRegistryImpl();
-					// The original also runs an initialize(EmiInitRegistry) pre-registration phase
-					// over the containers; that registry surface returns with the plugin-API round.
-					for (EmiPluginContainer container : plugins()) {
+					for (EmiPluginContainer container : plugins) {
 						step(EmiPort.literal("Loading plugin from " + container.id()), 10_000);
 						long start = System.currentTimeMillis();
 						try {

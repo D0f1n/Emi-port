@@ -16,6 +16,7 @@ import dev.emi.emi.api.stack.EmiRegistryAdapter;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.data.EmiData;
 import dev.emi.emi.data.IndexStackData;
+import dev.emi.emi.runtime.EmiHidden;
 import dev.emi.emi.runtime.EmiLog;
 import it.unimi.dsi.fastutil.Hash;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
@@ -264,8 +265,7 @@ public class EmiStackList {
 	}
 
 	public static void bakeFiltered() {
-		// EmiHidden (per-user disabled/hidden state) is a later round; for now the filtered view is the index.
-		filteredStacks = stacks;
+		filteredStacks = stacks.stream().filter(s -> !EmiHidden.isDisabled(s) && !EmiHidden.isHidden(s)).toList();
 	}
 
 	public static int getIndex(EmiIngredient ingredient) {

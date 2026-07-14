@@ -16,6 +16,7 @@ import dev.emi.emi.api.stack.ListEmiIngredient;
 import dev.emi.emi.api.stack.TagEmiIngredient;
 import dev.emi.emi.data.TagExclusions;
 import dev.emi.emi.platform.EmiAgnos;
+import dev.emi.emi.runtime.EmiHidden;
 import dev.emi.emi.runtime.EmiTagKey;
 import dev.emi.emi.util.InheritanceMap;
 import net.minecraft.client.Minecraft;
@@ -198,13 +199,27 @@ public class EmiTags {
 			.toList();
 		tags = consolodateTags(tags);
 		for (EmiTagKey<T> key : tags) {
-			TAG_VALUES.put(key, key.getList());
+			List<T> values = key.stream().filter(s -> !EmiHidden.isDisabled(stackFromKey(key, s))).toList();
+			if (values.isEmpty()) {
+				TAG_VALUES.put(key, key.getList());
+			} else {
+				TAG_VALUES.put(key, values);
+			}
 		}
 		EmiTags.TAGS.addAll(tags.stream().sorted((a, b) -> a.id().toString().compareTo(b.id().toString())).toList());
 		tags = tags.stream()
 			.sorted((a, b) -> Long.compare(b.stream().count(), a.stream().count()))
 			.toList();
 		EmiTags.SORTED_TAGS.put(registry.key().identifier(), (List) tags);
+	}
+
+	@SuppressWarnings("unchecked")
+	private static <T> EmiStack stackFromKey(EmiTagKey<T> key, T t) {
+		EmiRegistryAdapter<T> adapter = (EmiRegistryAdapter<T>) ADAPTERS_BY_REGISTRY.get(key.registry());
+		if (adapter != null) {
+			return adapter.of(t, EmiPort.emptyExtraData(), 1);
+		}
+		throw new UnsupportedOperationException("Unsupported tag registry " + key);
 	}
 
 	private static <T> List<EmiTagKey<T>> consolodateTags(List<EmiTagKey<T>> tags) {

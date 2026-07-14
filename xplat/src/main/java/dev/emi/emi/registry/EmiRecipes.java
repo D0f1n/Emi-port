@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 
 import org.jetbrains.annotations.Nullable;
 
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -22,6 +23,7 @@ import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.data.EmiData;
 import dev.emi.emi.data.EmiRecipeCategoryProperties;
+import dev.emi.emi.runtime.EmiHidden;
 import dev.emi.emi.runtime.EmiLog;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
@@ -32,8 +34,8 @@ import net.minecraft.resources.Identifier;
  * The recipe registry: plugin-registered categories, workstations and recipes, plus the baked
  * multi-index lookup manager (by input / output / category / id).
  *
- * <p>Trimmed against the original for the recipe round: stack hiding and recipe decorators return
- * with later rounds.
+ * <p>Trimmed against the original for the recipe round: recipe decorators return with a later
+ * round.
  */
 public class EmiRecipes {
 	public static volatile Worker activeWorker = null;
@@ -64,6 +66,16 @@ public class EmiRecipes {
 		recipes.addAll(EmiData.recipes.stream().map(r -> r.get()).toList());
 		categories.sort((a, b) -> EmiRecipeCategoryProperties.getOrder(a) - EmiRecipeCategoryProperties.getOrder(b));
 		invalidators.addAll(EmiData.recipeFilters);
+
+		invalidators.add(r -> {
+			for (EmiIngredient i : Iterables.concat(r.getInputs(), r.getOutputs(), r.getCatalysts())) {
+				if (EmiHidden.isDisabled(i)) {
+					return true;
+				}
+			}
+			return false;
+		});
+
 		List<EmiRecipe> filtered = recipes.stream().filter(r -> {
 			for (Predicate<EmiRecipe> predicate : invalidators) {
 				if (predicate.test(r)) {
