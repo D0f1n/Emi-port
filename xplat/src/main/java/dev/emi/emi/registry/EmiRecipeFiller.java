@@ -111,7 +111,7 @@ public class EmiRecipeFiller {
 		// wins over it everywhere but the player inventory, as the original.
 		if (screen != null && (ret == null || (ret instanceof CoercedRecipeHandler && !(screen instanceof InventoryScreen)))) {
 			EmiRecipeHandler<T> extra = (EmiRecipeHandler<T>) extraHandlers.apply(screen.getMenu(), recipe);
-			if (extra != null) {
+			if (extra != null && extra.supportsRecipe(recipe)) {
 				ret = extra;
 			}
 		}
