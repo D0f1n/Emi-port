@@ -40,6 +40,7 @@ public class EmiData {
 	public static volatile Map<String, EmiRecipeCategoryProperties> categoryPriorities = Map.of();
 	public static volatile List<Predicate<EmiRecipe>> recipeFilters = List.of();
 	public static volatile List<Supplier<IndexStackData>> stackData = List.of();
+	public static volatile List<Supplier<EmiAlias>> aliases = List.of();
 	public static volatile List<Supplier<EmiRecipe>> recipes = List.of();
 	// TODO(bom): parked by RecipeDefaultLoader until the BoM round provides the consumer.
 	public static volatile RecipeDefaults recipeDefaults = new RecipeDefaults();
@@ -186,6 +187,21 @@ public class EmiData {
 					boolean disable = GsonHelper.getAsBoolean(json, "disable", false);
 					return new IndexStackData(disable, added, removed, filters);
 				}), list -> stackData = list));
+		register.accept(
+			new EmiDataLoader<List<Supplier<EmiAlias>>>(
+				EmiPort.id("emi:aliases"), "aliases", Lists::newArrayList,
+				(list, json, id) -> {
+					if (GsonHelper.isArrayNode(json, "aliases")) {
+						for (JsonElement el : json.getAsJsonArray("aliases")) {
+							if (el.isJsonObject()) {
+								JsonObject obj = el.getAsJsonObject();
+								list.add(() -> new EmiAlias(
+									getArrayOrSingleton(obj, "stacks").map(e -> EmiIngredientSerializer.getDeserialized(e)).toList(),
+									getArrayOrSingleton(obj, "text").map(e -> e.getAsString()).toList()));
+							}
+						}
+					}
+				}, list -> aliases = list));
 		register.accept(
 			new EmiDataLoader<List<Supplier<EmiRecipe>>>(
 				EmiPort.id("emi:recipe_additions"), "recipe/additions", Lists::newArrayList,

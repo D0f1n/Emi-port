@@ -3,20 +3,26 @@ package dev.emi.emi.search;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 
+import dev.emi.emi.EmiPort;
 import dev.emi.emi.EmiUtil;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.config.EmiConfig;
+import dev.emi.emi.data.EmiAlias;
+import dev.emi.emi.data.EmiData;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiLog;
 import dev.emi.emi.screen.EmiScreenManager;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.searchtree.SuffixArray;
+import net.minecraft.locale.Language;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
@@ -29,8 +35,8 @@ import net.minecraft.world.item.enchantment.ItemEnchantments;
 /**
  * The EMI search engine: the query compiler with the full prefix syntax ({@code @}mod, {@code $}tooltip,
  * {@code #}tag, {@code /regex/}, {@code |} OR, {@code -} negate), and the baked {@code SuffixArray}
- * indexes over names (display name + id path), tooltips and mod names. Stacks outside the baked index
- * fall back to live {@code matchesUnbaked} tests; aliases are not ported yet.
+ * indexes over names (display name + id path), tooltips, mod names and datapack aliases. Stacks
+ * outside the baked index fall back to live {@code matchesUnbaked} tests.
  *
  * <p>Each search runs on its own daemon worker thread; a newer search supersedes the running one, which
  * notices via {@code currentWorker} and bails. Results are published into the volatile {@link #stacks},
@@ -59,11 +65,13 @@ public class EmiSearch {
 	// background reload re-bakes, and must only ever observe a finished generation (old or new).
 	public static volatile Set<EmiStack> bakedStacks;
 	public static volatile SuffixArray<SearchStack> names, tooltips, mods;
+	public static volatile SuffixArray<EmiStack> aliases;
 
 	public static void bake() {
 		SuffixArray<SearchStack> names = new SuffixArray<>();
 		SuffixArray<SearchStack> tooltips = new SuffixArray<>();
 		SuffixArray<SearchStack> mods = new SuffixArray<>();
+		SuffixArray<EmiStack> aliases = new SuffixArray<>();
 		Set<EmiStack> bakedStacks = Sets.newIdentityHashSet();
 		boolean old = EmiConfig.appendItemModId;
 		EmiConfig.appendItemModId = false;
@@ -102,14 +110,31 @@ public class EmiSearch {
 				EmiLog.error("EMI caught an exception while baking search for " + stack, e);
 			}
 		}
-		// TODO(alias): the original also bakes alias strings here once EmiData aliases are ported.
+		for (Supplier<EmiAlias> supplier : EmiData.aliases) {
+			EmiAlias alias = supplier.get();
+			for (String key : alias.keys()) {
+				if (!Language.getInstance().has(key)) {
+					EmiLog.warn("Untranslated alias " + key);
+				}
+				String text = I18n.get(key).toLowerCase();
+				for (EmiIngredient ing : alias.stacks()) {
+					for (EmiStack stack : ing.getEmiStacks()) {
+						aliases.add(stack.copy().comparison(EmiPort.compareStrict()), text);
+					}
+				}
+			}
+		}
+		// The original also bakes plugin-registered aliases (EmiStackList.registryAliases) here;
+		// EmiRegistry.addAlias returns with the plugin-API round.
 		EmiConfig.appendItemModId = old;
 		names.generate();
 		tooltips.generate();
 		mods.generate();
+		aliases.generate();
 		EmiSearch.names = names;
 		EmiSearch.tooltips = tooltips;
 		EmiSearch.mods = mods;
+		EmiSearch.aliases = aliases;
 		EmiSearch.bakedStacks = bakedStacks;
 	}
 
@@ -178,7 +203,8 @@ public class EmiSearch {
 						constructors.add(QueryType.TAG.queryConstructor);
 						regexConstructors.add(QueryType.TAG.regexQueryConstructor);
 					}
-					// TODO(alias): the original also joins AliasQuery once aliases are ported.
+					// TODO add config
+					constructors.add(AliasQuery::new);
 					if (constructors.size() > 1) {
 						constructor = name -> new LogicalOrQuery(constructors.stream().map(c -> c.apply(name)).toList());
 						regexConstructor = name -> new LogicalOrQuery(regexConstructors.stream().map(c -> c.apply(name)).toList());
