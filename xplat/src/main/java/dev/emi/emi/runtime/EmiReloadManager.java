@@ -27,6 +27,7 @@ import dev.emi.emi.registry.EmiRecipeSource;
 import dev.emi.emi.registry.EmiRecipes;
 import dev.emi.emi.registry.EmiRegistryImpl;
 import dev.emi.emi.registry.EmiStackList;
+import dev.emi.emi.registry.EmiStackProviders;
 import dev.emi.emi.registry.EmiTags;
 import dev.emi.emi.screen.EmiScreenManager;
 import dev.emi.emi.search.EmiSearch;
@@ -169,6 +170,7 @@ public class EmiReloadManager {
 					EmiRecipes.clear();
 					EmiStackList.clear();
 					EmiRecipeFiller.clear();
+					EmiStackProviders.clear();
 					EmiRecipeSource.clear();
 					if (clear) {
 						clear = false;

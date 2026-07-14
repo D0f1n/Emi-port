@@ -22,6 +22,16 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 @Mixin(Screen.class)
 public abstract class ScreenMixin {
 
+	// The tooltip-stack fallback holds the stack captured while the screen extracted last frame,
+	// so input handling between frames still sees it; clear it right before this frame's
+	// extraction re-captures.
+	@Inject(method = "extractRenderStateWithTooltipAndSubtitles(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIF)V",
+		at = @At("HEAD"))
+	private void emi$clearTooltipStack(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick,
+			CallbackInfo ci) {
+		EmiScreenManager.lastStackTooltipRendered = null;
+	}
+
 	@Inject(method = "extractRenderStateWithTooltipAndSubtitles(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIF)V",
 		at = @At(value = "INVOKE",
 			target = "Lnet/minecraft/client/gui/GuiGraphicsExtractor;extractDeferredElements(IIF)V"))

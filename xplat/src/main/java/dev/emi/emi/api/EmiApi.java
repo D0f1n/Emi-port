@@ -16,6 +16,7 @@ import dev.emi.emi.api.recipe.EmiRecipeCategory;
 import dev.emi.emi.api.recipe.EmiRecipeManager;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
+import dev.emi.emi.api.stack.EmiStackInteraction;
 import dev.emi.emi.api.stack.TagEmiIngredient;
 import dev.emi.emi.recipe.EmiTagRecipe;
 import dev.emi.emi.registry.EmiRecipes;
@@ -82,6 +83,19 @@ public class EmiApi {
 
 	public static boolean isSearchFocused() {
 		return EmiScreenManager.isSearchFocused();
+	}
+
+	/**
+	 * @param includeStandard Whether to include stacks from the standard sources: vanilla slots,
+	 * 	and the tooltip-derived hover fallback.
+	 */
+	public static EmiStackInteraction getHoveredStack(int mouseX, int mouseY, boolean includeStandard) {
+		return EmiScreenManager.getHoveredStack(mouseX, mouseY, includeStandard);
+	}
+
+	public static EmiStackInteraction getHoveredStack(boolean includeStandard) {
+		return EmiScreenManager.getHoveredStack(EmiScreenManager.lastMouseX, EmiScreenManager.lastMouseY,
+			includeStandard);
 	}
 
 	public static void displayAllRecipes() {

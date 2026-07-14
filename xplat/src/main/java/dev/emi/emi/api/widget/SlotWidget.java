@@ -8,12 +8,13 @@ import com.google.common.collect.Lists;
 
 import dev.emi.emi.EmiPort;
 import dev.emi.emi.EmiRenderHelper;
-import dev.emi.emi.api.EmiApi;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.render.EmiRender;
 import dev.emi.emi.api.stack.EmiIngredient;
-import dev.emi.emi.config.EmiConfig;
+import dev.emi.emi.api.stack.EmiStackInteraction;
+import dev.emi.emi.input.EmiBind;
 import dev.emi.emi.runtime.EmiDrawContext;
+import dev.emi.emi.screen.EmiScreenManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
@@ -215,16 +216,24 @@ public class SlotWidget extends Widget {
 
 	@Override
 	public boolean mouseClicked(int mouseX, int mouseY, int button) {
-		if (getStack().isEmpty()) {
-			return false;
-		}
-		if (EmiConfig.viewRecipes.matchesMouse(button)) {
-			EmiApi.displayRecipes(getStack());
-			return true;
-		} else if (EmiConfig.viewUses.matchesMouse(button)) {
-			EmiApi.displayUses(getStack());
+		if (slotInteraction(bind -> bind.matchesMouse(button))) {
 			return true;
 		}
+		return EmiScreenManager.stackInteraction(new EmiStackInteraction(getStack(), getRecipe(), true),
+			bind -> bind.matchesMouse(button));
+	}
+
+	@Override
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (slotInteraction(bind -> bind.matchesKey(keyCode, scanCode))) {
+			return true;
+		}
+		return EmiScreenManager.stackInteraction(new EmiStackInteraction(getStack(), getRecipe(), true),
+			bind -> bind.matchesKey(keyCode, scanCode));
+	}
+
+	private boolean slotInteraction(Function<EmiBind, Boolean> function) {
+		// The original toggles BoM default recipes and resolutions here. TODO(bom)
 		return false;
 	}
 }

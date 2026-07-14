@@ -10,6 +10,7 @@ import dev.emi.emi.api.recipe.handler.EmiRecipeHandler;
 import dev.emi.emi.api.stack.Comparison;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
@@ -64,6 +65,18 @@ public interface EmiRegistry {
 	 * A null type is used for the player's own inventory menu.
 	 */
 	<T extends AbstractContainerMenu> void addRecipeHandler(MenuType<T> type, EmiRecipeHandler<T> handler);
+
+	/**
+	 * Adds an EmiStackProvider to screens of a given class.
+	 * Stack providers can inform EMI of EmiIngredients that are located on the screen.
+	 */
+	<T extends Screen> void addStackProvider(Class<T> clazz, EmiStackProvider<T> provider);
+
+	/**
+	 * Adds an EmiStackProvider to every screen.
+	 * Stack providers can inform EMI of EmiIngredients that are located on the screen.
+	 */
+	void addGenericStackProvider(EmiStackProvider<Screen> provider);
 
 	/**
 	 * Adds a default compraison method for a stack key.

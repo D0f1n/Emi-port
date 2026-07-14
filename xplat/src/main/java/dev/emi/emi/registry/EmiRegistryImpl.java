@@ -7,11 +7,13 @@ import java.util.function.Predicate;
 import com.google.common.collect.Lists;
 
 import dev.emi.emi.api.EmiRegistry;
+import dev.emi.emi.api.EmiStackProvider;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.EmiRecipeCategory;
 import dev.emi.emi.api.recipe.handler.EmiRecipeHandler;
 import dev.emi.emi.api.stack.Comparison;
 import dev.emi.emi.api.stack.EmiIngredient;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
 
@@ -45,6 +47,16 @@ public class EmiRegistryImpl implements EmiRegistry {
 	@Override
 	public <T extends AbstractContainerMenu> void addRecipeHandler(MenuType<T> type, EmiRecipeHandler<T> handler) {
 		EmiRecipeFiller.handlers.computeIfAbsent(type, k -> Lists.newArrayList()).add(handler);
+	}
+
+	@Override
+	public <T extends Screen> void addStackProvider(Class<T> clazz, EmiStackProvider<T> provider) {
+		EmiStackProviders.fromClass.computeIfAbsent(clazz, k -> Lists.newArrayList()).add(provider);
+	}
+
+	@Override
+	public void addGenericStackProvider(EmiStackProvider<Screen> provider) {
+		EmiStackProviders.generic.add(provider);
 	}
 
 	@Override

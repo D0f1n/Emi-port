@@ -1,6 +1,9 @@
 package dev.emi.emi.screen;
 
 import java.util.List;
+import java.util.function.Function;
+
+import org.jetbrains.annotations.Nullable;
 
 import dev.emi.emi.EmiPort;
 import dev.emi.emi.EmiRenderHelper;
@@ -9,7 +12,9 @@ import dev.emi.emi.api.recipe.EmiPlayerInventory;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
+import dev.emi.emi.api.stack.EmiStackInteraction;
 import dev.emi.emi.api.widget.Bounds;
+import dev.emi.emi.input.EmiBind;
 import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.config.HeaderType;
 import dev.emi.emi.config.IntGroup;
@@ -21,8 +26,11 @@ import dev.emi.emi.config.SidebarSide;
 import dev.emi.emi.config.SidebarTheme;
 import dev.emi.emi.config.SidebarType;
 import dev.emi.emi.registry.EmiStackList;
+import dev.emi.emi.registry.EmiStackProviders;
 import dev.emi.emi.runtime.EmiDrawContext;
+import dev.emi.emi.runtime.EmiFavorite;
 import dev.emi.emi.runtime.EmiFavorites;
+import dev.emi.emi.runtime.EmiHistory;
 import dev.emi.emi.runtime.EmiReloadManager;
 import dev.emi.emi.runtime.EmiSidebars;
 import dev.emi.emi.screen.widget.SidebarButtonWidget;
@@ -40,6 +48,7 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
+import net.minecraft.world.item.ItemStack;
 
 /**
  * The EMI overlay core: the left and right sidebar panels and the search bar. Each panel cycles
@@ -73,9 +82,24 @@ public class EmiScreenManager {
 	private static final SidebarPanel rightPanel = new SidebarPanel(SidebarSide.RIGHT, EmiConfig.rightSidebarPages);
 	private static final List<SidebarPanel> panels = List.of(leftPanel, rightPanel);
 	private static int lastWidth, lastHeight, lastGuiLeft, lastGuiRight;
-	private static int lastMouseX, lastMouseY;
+	public static int lastMouseX, lastMouseY;
 	private static long lastPlayerInventorySync = 0;
 	public static EmiPlayerInventory lastPlayerInventory;
+
+	/**
+	 * The last ItemStack any screen requested a tooltip for this frame — the hover fallback for
+	 * screens with no slots or providers. Captured by {@code GuiGraphicsExtractorMixin}, cleared at
+	 * the start of each screen extraction by {@code ScreenMixin}.
+	 */
+	public static ItemStack lastStackTooltipRendered;
+
+	/**
+	 * The sticky craftable hover (miscraft prevention): pins the hovered craftable so a crafted
+	 * item shifting the sidebar under the cursor can't redirect the next craft bind.
+	 */
+	private static EmiStackInteraction lastHoveredCraftable = null;
+	private static int lastHoveredCraftableOffset = -1;
+	private static boolean lastHoveredCraftableSturdy = false;
 
 	/** EMI's search bar — a vanilla EditBox owned and driven by the manager (not a screen child). */
 	public static EditBox search;
@@ -140,33 +164,47 @@ public class EmiScreenManager {
 
 	// --- input routing (from the screen mixins) ---
 
+	/** Standard mouse buttons interact with EMI stacks by clicking; extra buttons act as key-style binds. */
+	private static boolean isClickClicky(int button) {
+		return button >= 0 && button < 3;
+	}
+
 	public static boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
 		if (isDisabled()) {
 			return false;
 		}
 		int mx = (int) event.x();
 		int my = (int) event.y();
+		int button = event.button();
 		if (isOverSearch(mx, my)) {
 			search.setFocused(true);
 			updateSearchSidebar();
 			return true;
 		}
-		if (emi.mouseClicked(mx, my, event.button())) {
+		if (emi.mouseClicked(mx, my, button)) {
 			return true;
 		}
 		for (SidebarPanel panel : panels) {
 			if (panel.headerVisible()
-					&& (panel.pageLeft.mouseClicked(mx, my, event.button()) || panel.cycle.mouseClicked(mx, my, event.button())
-						|| panel.pageRight.mouseClicked(mx, my, event.button()))) {
+					&& (panel.pageLeft.mouseClicked(mx, my, button) || panel.cycle.mouseClicked(mx, my, button)
+						|| panel.pageRight.mouseClicked(mx, my, button))) {
 				return true;
 			}
 		}
-		EmiIngredient stack = getStackAt(mx, my);
-		if (stack != null && !stack.isEmpty()) {
-			// Record the press; recipe/use lookup and favorites drops resolve in mouseReleased, so a
-			// drag can begin without triggering a lookup, as the original.
-			pressedStack = stack;
-			return true;
+		// Record the press; interactions resolve in mouseReleased, so a drag can begin without
+		// triggering a lookup, as the original. Only real clicks swallow the event — extra mouse
+		// buttons pass through so vanilla still sees them, resolving as binds on release.
+		EmiIngredient ingredient = getHoveredStack(mx, my, !isClickClicky(button)).getStack();
+		pressedStack = ingredient;
+		if (!ingredient.isEmpty()) {
+			ingredient = getHoveredStack(mx, my, false).getStack();
+			if (!ingredient.isEmpty()) {
+				return true;
+			}
+		} else {
+			if (genericInteraction(bind -> bind.matchesMouse(button))) {
+				return true;
+			}
 		}
 		if (search != null) {
 			search.setFocused(false);
@@ -183,8 +221,9 @@ public class EmiScreenManager {
 					&& !hs.getMenu().getCarried().isEmpty()) {
 				return false;
 			}
-			EmiIngredient hovered = getStackAt((int) mouseX, (int) mouseY);
-			if (hovered != pressedStack) {
+			// The original also bails on EmiFavorite.Synthetic here; synthetics return with BoM. TODO(bom)
+			EmiStackInteraction hovered = getHoveredStack((int) mouseX, (int) mouseY, !isClickClicky(button));
+			if (hovered.getStack() != pressedStack) {
 				draggedStack = pressedStack;
 			}
 		}
@@ -223,16 +262,13 @@ public class EmiScreenManager {
 					}
 					// The original forwards drops elsewhere to plugin drag-drop handlers. TODO(polish)
 				} else {
-					EmiIngredient stack = getStackAt(mx, my);
-					if (stack != null && !stack.isEmpty()) {
-						if (EmiConfig.viewRecipes.matchesMouse(button)) {
-							EmiApi.displayRecipes(stack);
-							return true;
-						} else if (EmiConfig.viewUses.matchesMouse(button)) {
-							EmiApi.displayUses(stack);
-							return true;
-						}
+					EmiStackInteraction hovered = getHoveredStack(mx, my, !isClickClicky(button));
+					if (stackInteraction(hovered, bind -> bind.matchesMouse(button))) {
+						return true;
 					}
+				}
+				if (genericInteraction(bind -> bind.matchesMouse(button))) {
+					return true;
 				}
 			}
 			return false;
@@ -268,9 +304,10 @@ public class EmiScreenManager {
 	}
 
 	/**
-	 * EMI's config-driven keybinds (favorite, view recipes/uses, focus/clear search). Called from the
-	 * keyboard dispatch mixin when the search is not focused. The bind modifier state is matched by
-	 * {@link dev.emi.emi.input.EmiBind EmiBind} itself.
+	 * EMI's config-driven keybinds. Called from the keyboard dispatch mixin when the search is not
+	 * focused. The bind modifier state is matched by {@link dev.emi.emi.input.EmiBind EmiBind}
+	 * itself. Stack binds route through {@link #stackInteraction}, everything else through
+	 * {@link #genericInteraction}, as the original.
 	 */
 	public static boolean handleInput(KeyEvent event) {
 		Screen screen = client().gui.screen();
@@ -290,46 +327,100 @@ public class EmiScreenManager {
 		if (isDisabled()) {
 			return false;
 		}
-		if (EmiConfig.focusSearch.matchesKey(event.key(), event.scancode())) {
+		Function<EmiBind, Boolean> function = bind -> bind.matchesKey(event.key(), event.scancode());
+		EmiStackInteraction hovered = getHoveredStack(lastMouseX, lastMouseY, true);
+		// The original routes recipe-screen keys through the hovered SlotWidget; the port's global
+		// keyboard dispatch resolves the hovered slot here instead, keeping its recipe context.
+		if (hovered.isEmpty() && screen instanceof RecipeScreen rs) {
+			EmiIngredient rsHovered = rs.getHoveredStack();
+			if (rsHovered != null && !rsHovered.isEmpty()) {
+				hovered = new EmiStackInteraction(rsHovered, rs.getHoveredRecipeContext(), true);
+			}
+		}
+		if (stackInteraction(hovered, function)) {
+			return true;
+		}
+		return genericInteraction(function);
+	}
+
+	/** Binds that act regardless of the hovered stack: search focus, history navigation. */
+	public static boolean genericInteraction(Function<EmiBind, Boolean> function) {
+		if (function.apply(EmiConfig.toggleVisibility)) {
+			EmiConfig.enabled = !EmiConfig.enabled;
+			EmiConfig.writeConfig();
+			return true;
+		}
+		boolean searchBreak = false;
+		if (function.apply(EmiConfig.focusSearch)) {
 			if (search != null) {
 				search.setFocused(true);
 				updateSearchSidebar();
-				return true;
+				searchBreak = true;
 			}
-			return false;
 		}
-		if (EmiConfig.clearSearch.matchesKey(event.key(), event.scancode())) {
+		if (function.apply(EmiConfig.clearSearch)) {
 			if (search != null) {
 				search.setValue("");
+				searchBreak = true;
+			}
+		}
+		if (searchBreak) {
+			return true;
+		}
+		// The original's viewTree bind opens the BoM tree here. TODO(bom)
+		if (function.apply(EmiConfig.back)) {
+			if (!EmiHistory.isEmpty()) {
+				EmiHistory.pop();
 				return true;
 			}
-			return false;
+		} else if (function.apply(EmiConfig.forward)) {
+			if (!EmiHistory.isForwardEmpty()) {
+				EmiHistory.forward();
+				return true;
+			}
 		}
-		return stackInteraction(event, screen);
+		return false;
 	}
 
-	/** Binds that act on the hovered stack: favorite (with recipe context), view recipes, view uses. */
-	private static boolean stackInteraction(KeyEvent event, Screen screen) {
-		EmiIngredient hovered = getStackAt(lastMouseX, lastMouseY);
-		EmiRecipe context = EmiApi.getRecipeContext(hovered);
-		if ((hovered == null || hovered.isEmpty()) && screen instanceof RecipeScreen rs) {
-			hovered = rs.getHoveredStack();
-			context = rs.getHoveredRecipeContext();
+	/**
+	 * Binds that act on the hovered stack, in the original's precedence order. The edit-mode hide
+	 * binds come first in the original; they return with EmiData. The craft and cheat binds join
+	 * with their rounds.
+	 */
+	public static boolean stackInteraction(EmiStackInteraction stack, Function<EmiBind, Boolean> function) {
+		EmiIngredient ingredient = stack.getStack();
+		EmiRecipe context = EmiApi.getRecipeContext(ingredient);
+		if (!ingredient.isEmpty()) {
+			if (function.apply(EmiConfig.viewRecipes)) {
+				EmiApi.displayRecipes(ingredient);
+				if (stack.getRecipeContext() != null) {
+					EmiApi.focusRecipe(stack.getRecipeContext());
+				}
+				return true;
+			} else if (function.apply(EmiConfig.viewUses)) {
+				EmiApi.displayUses(ingredient);
+				return true;
+			} else if (function.apply(EmiConfig.favorite)) {
+				EmiFavorites.addFavorite(ingredient, stack.getRecipeContext());
+				repopulatePanels(SidebarType.FAVORITES);
+				return true;
+			}
+			// The original's viewStackTree bind sets the BoM goal here. TODO(bom)
 		}
-		if (hovered == null || hovered.isEmpty()) {
+		if (recipeInteraction(context, function)) {
+			return true;
+		}
+		return false;
+	}
+
+	/** Binds that act on a recipe context: favoriting a recipe's output with the recipe attached. */
+	public static boolean recipeInteraction(EmiRecipe recipe, Function<EmiBind, Boolean> function) {
+		if (recipe == null) {
 			return false;
 		}
-		if (EmiConfig.favorite.matchesKey(event.key(), event.scancode())) {
-			EmiFavorites.addFavorite(hovered, context);
+		if (function.apply(EmiConfig.favorite) && recipe.getOutputs().size() > 0) {
+			EmiFavorites.addFavorite(recipe.getOutputs().get(0), recipe);
 			repopulatePanels(SidebarType.FAVORITES);
-			return true;
-		}
-		if (EmiConfig.viewRecipes.matchesKey(event.key(), event.scancode())) {
-			EmiApi.displayRecipes(hovered);
-			return true;
-		}
-		if (EmiConfig.viewUses.matchesKey(event.key(), event.scancode())) {
-			EmiApi.displayUses(hovered);
 			return true;
 		}
 		return false;
@@ -537,7 +628,7 @@ public class EmiScreenManager {
 			case CENTER -> Mth.clamp(cy - (th * ENTRY_SIZE - headerOffset + theme.verticalPadding / 2) / 2, vt, vb);
 			case BOTTOM -> vb;
 		};
-		return new ScreenSpace(tx, ty, tw, th, rtl, exclusion);
+		return new ScreenSpace(tx, ty, tw, th, rtl, exclusion, panel);
 	}
 
 	/**
@@ -600,8 +691,7 @@ public class EmiScreenManager {
 		if (searchedStacks != EmiSearch.stacks) {
 			setSearchedStacks(EmiSearch.stacks);
 		}
-		lastMouseX = mouseX;
-		lastMouseY = mouseY;
+		updateMouse(mouseX, mouseY);
 		// Drop search focus when the screen changes, so the EMI search never swallows input meant for a
 		// different screen (e.g. a vanilla anvil/sign rename field).
 		if (screen != lastScreen) {
@@ -723,6 +813,81 @@ public class EmiScreenManager {
 			return null;
 		}
 		return panel.getStackAt(mouseX, mouseY);
+	}
+
+	/** The sidebar grid space under the mouse, or null. */
+	static @Nullable ScreenSpace getHoveredSpace(int mouseX, int mouseY) {
+		SidebarPanel panel = getHoveredPanel(mouseX, mouseY);
+		if (panel != null) {
+			return panel.space;
+		}
+		return null;
+	}
+
+	public static EmiStackInteraction getHoveredStack(int mouseX, int mouseY, boolean notClick) {
+		return getHoveredStack(mouseX, mouseY, notClick, false);
+	}
+
+	/**
+	 * The full hover resolution, in the original's order: registered stack providers (with the
+	 * vanilla-slot fallback), the sticky craftable, the sidebar panels, and last the stack a screen
+	 * requested a tooltip for.
+	 */
+	public static EmiStackInteraction getHoveredStack(int mouseX, int mouseY, boolean notClick,
+			boolean ignoreLastHoveredCraftable) {
+		Screen screen = client().gui.screen();
+		if (screen == null) {
+			return EmiStackInteraction.EMPTY;
+		}
+		EmiStackInteraction stack = EmiStackProviders.getStackAt(screen, mouseX, mouseY, notClick);
+		if (!stack.isEmpty()) {
+			return stack;
+		}
+		if (!ignoreLastHoveredCraftable) {
+			if (lastHoveredCraftable != null) {
+				if (lastHoveredCraftable.getRecipeContext() == null
+						|| (!lastHoveredCraftableSturdy && lastPlayerInventory != null
+							&& !lastPlayerInventory.canCraft(lastHoveredCraftable.getRecipeContext()))) {
+					lastHoveredCraftable = null;
+				} else {
+					return lastHoveredCraftable;
+				}
+			}
+		}
+		for (SidebarPanel panel : panels) {
+			ScreenSpace space = panel.space;
+			if (!panel.hidden() && space != null && space.pageSize > 0 && space.contains(mouseX, mouseY)) {
+				EmiIngredient hovered = panel.getStackAt(mouseX, mouseY);
+				if (hovered != null && !hovered.isEmpty()) {
+					if (hovered instanceof EmiFavorite fav) {
+						return new SidebarEmiStackInteraction(hovered, space, fav.getRecipe(), true);
+					}
+					return new SidebarEmiStackInteraction(hovered, space);
+				}
+			}
+		}
+		if (lastStackTooltipRendered != null && notClick) {
+			return new EmiStackInteraction(EmiStack.of(lastStackTooltipRendered));
+		}
+		return EmiStackInteraction.EMPTY;
+	}
+
+	/** Drops the sticky craftable once the cursor leaves its cell, as the original. */
+	private static void updateMouse(int mouseX, int mouseY) {
+		if (lastHoveredCraftable != null) {
+			ScreenSpace space = getHoveredSpace(mouseX, mouseY);
+			if (space != null
+					&& (space.getType() == SidebarType.CRAFTABLES || space.getType() == SidebarType.CRAFT_HISTORY)) {
+				int offset = space.getRawOffsetFromMouse(mouseX, mouseY);
+				if (offset != lastHoveredCraftableOffset) {
+					lastHoveredCraftable = null;
+				}
+			} else {
+				lastHoveredCraftable = null;
+			}
+		}
+		lastMouseX = mouseX;
+		lastMouseY = mouseY;
 	}
 
 	private static Minecraft client() {
@@ -934,13 +1099,15 @@ public class EmiScreenManager {
 		public final int pageSize;
 		public final boolean rtl;
 		public final int[] widths;
+		private final SidebarPanel panel;
 
-		public ScreenSpace(int tx, int ty, int tw, int th, boolean rtl, List<Bounds> exclusion) {
+		public ScreenSpace(int tx, int ty, int tw, int th, boolean rtl, List<Bounds> exclusion, SidebarPanel panel) {
 			this.tx = tx;
 			this.ty = ty;
 			this.tw = tw;
 			this.th = th;
 			this.rtl = rtl;
+			this.panel = panel;
 			int[] widths = new int[th];
 			int pageSize = 0;
 			for (int y = 0; y < th; y++) {
@@ -963,6 +1130,10 @@ public class EmiScreenManager {
 			}
 			this.pageSize = pageSize;
 			this.widths = widths;
+		}
+
+		public SidebarType getType() {
+			return panel != null ? panel.getType() : SidebarType.NONE;
 		}
 
 		public int getWidth(int y) {
@@ -1075,6 +1246,25 @@ public class EmiScreenManager {
 
 		public boolean contains(int x, int y) {
 			return x >= tx && x < tx + tw * ENTRY_SIZE && y >= ty && y < ty + th * ENTRY_SIZE;
+		}
+	}
+
+	/** A hover over an EMI sidebar grid; craft and cheat interactions only apply to these. */
+	public static class SidebarEmiStackInteraction extends EmiStackInteraction {
+		public final ScreenSpace space;
+
+		public SidebarEmiStackInteraction(EmiIngredient stack, ScreenSpace space) {
+			super(stack);
+			this.space = space;
+		}
+
+		public SidebarEmiStackInteraction(EmiIngredient stack, ScreenSpace space, EmiRecipe recipe, boolean clickable) {
+			super(stack, recipe, clickable);
+			this.space = space;
+		}
+
+		public SidebarType getType() {
+			return space.getType();
 		}
 	}
 }
