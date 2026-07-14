@@ -10,6 +10,7 @@
     "GuiGraphicsExtractorMixin",
     "ScreenMixin",
     "KeyboardHandlerMixin",
+    "MinecraftMixin",
     "HoeItemMixin",
     "ItemStackMixin",
     "accessor.AbstractContainerScreenAccessor",
