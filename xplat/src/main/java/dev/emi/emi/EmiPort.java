@@ -1,6 +1,9 @@
 package dev.emi.emi;
 
+import java.io.InputStream;
+import java.util.Collection;
 import java.util.List;
+import java.util.function.Predicate;
 
 import org.jetbrains.annotations.Nullable;
 
@@ -14,6 +17,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.packs.resources.Resource;
+import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -118,6 +123,18 @@ public final class EmiPort {
 
 	public static Identifier id(String namespace, String path) {
 		return Identifier.fromNamespaceAndPath(namespace, path);
+	}
+
+	public static Collection<Identifier> findResources(ResourceManager manager, String prefix, Predicate<String> pred) {
+		return manager.listResources(prefix, i -> pred.test(i.toString())).keySet();
+	}
+
+	public static InputStream getInputStream(Resource resource) {
+		try {
+			return resource.open();
+		} catch (Exception e) {
+			return null;
+		}
 	}
 
 	// --- recipe layer (26.2) ---

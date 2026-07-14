@@ -1,5 +1,6 @@
 package dev.emi.emi.platform.neoforge;
 
+import dev.emi.emi.data.EmiData;
 import dev.emi.emi.network.EmiNetwork;
 import dev.emi.emi.platform.EmiClient;
 import dev.emi.emi.runtime.EmiReloadManager;
@@ -8,6 +9,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
@@ -16,6 +18,11 @@ import net.neoforged.neoforge.common.NeoForge;
 @EventBusSubscriber(modid = "emi", value = Dist.CLIENT)
 public class EmiClientNeoForge {
 	private static volatile boolean pendingReload = false;
+
+	@SubscribeEvent
+	public static void registerReloadListeners(AddClientReloadListenersEvent event) {
+		EmiData.init(reloader -> event.addListener(reloader.getEmiId(), reloader));
+	}
 
 	@SubscribeEvent
 	public static void clientInit(FMLClientSetupEvent event) {
