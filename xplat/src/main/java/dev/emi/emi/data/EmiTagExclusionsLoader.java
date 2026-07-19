@@ -42,17 +42,14 @@ public class EmiTagExclusionsLoader extends SimplePreparableReloadListener<TagEx
 							if (GsonHelper.isArrayNode(json, key)) {
 								JsonArray arr = GsonHelper.getAsJsonArray(json, key);
 								for (JsonElement el : arr) {
+									// The original also mirrors c: exclusions into forge:; on 26.2 NeoForge
+									// shares the c: namespace and forge: tags no longer exist, so the
+									// duplication is dropped.
 									Identifier eid = EmiPort.id(el.getAsString());
 									if (key.equals("exclusions")) {
 										exclusions.add(eid);
-										if (eid.getNamespace().equals("c")) {
-											exclusions.add(EmiPort.id("forge", eid.getPath()));
-										}
 									} else {
 										exclusions.add(type, eid);
-										if (eid.getNamespace().equals("c")) {
-											exclusions.add(type, EmiPort.id("forge", eid.getPath()));
-										}
 									}
 								}
 							}
