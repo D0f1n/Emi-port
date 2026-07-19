@@ -7,12 +7,13 @@ import java.io.FileWriter;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
+import dev.emi.emi.bom.BoM;
 import net.minecraft.util.GsonHelper;
 
 /**
  * Client-side persistent state, written to {@code emi.json} in the game directory like the original.
- * The {@code favorites}, sidebar history and {@code hidden_stacks} sections are ported; the
- * original's BoM recipe defaults section loads/saves with its own round. TODO(bom)
+ * Holds the {@code favorites}, sidebar history, {@code recipe_defaults} and {@code hidden_stacks}
+ * sections.
  */
 public class EmiPersistentData {
 	public static final File FILE = new File("emi.json");
@@ -23,6 +24,7 @@ public class EmiPersistentData {
 			JsonObject json = new JsonObject();
 			json.add("favorites", EmiFavorites.save());
 			EmiSidebars.save(json);
+			json.add("recipe_defaults", BoM.saveAdded());
 			json.add("hidden_stacks", EmiHidden.save());
 			FileWriter writer = new FileWriter(FILE);
 			GSON.toJson(json, writer);
@@ -42,6 +44,9 @@ public class EmiPersistentData {
 				EmiFavorites.load(GsonHelper.getAsJsonArray(json, "favorites"));
 			}
 			EmiSidebars.load(json);
+			if (GsonHelper.isObjectNode(json, "recipe_defaults")) {
+				BoM.loadAdded(GsonHelper.getAsJsonObject(json, "recipe_defaults"));
+			}
 			if (GsonHelper.isArrayNode(json, "hidden_stacks")) {
 				EmiHidden.load(GsonHelper.getAsJsonArray(json, "hidden_stacks"));
 			}

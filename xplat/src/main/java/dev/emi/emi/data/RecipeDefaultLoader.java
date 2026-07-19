@@ -9,6 +9,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 
 import dev.emi.emi.EmiPort;
+import dev.emi.emi.bom.BoM;
 import dev.emi.emi.runtime.EmiLog;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.Resource;
@@ -44,9 +45,7 @@ public class RecipeDefaultLoader extends SimplePreparableReloadListener<RecipeDe
 
 	@Override
 	protected void apply(RecipeDefaults prepared, ResourceManager manager, ProfilerFiller profiler) {
-		// TODO(bom): the original hands these to BoM.setDefaults; the consumer arrives with the
-		// BoM round, the loaded defaults are only parked here until then.
-		EmiData.recipeDefaults = prepared;
+		BoM.setDefaults(prepared);
 	}
 
 	@Override

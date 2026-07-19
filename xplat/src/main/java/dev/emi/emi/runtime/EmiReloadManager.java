@@ -17,6 +17,7 @@ import dev.emi.emi.api.stack.ItemEmiStack;
 import dev.emi.emi.api.stack.ListEmiIngredient;
 import dev.emi.emi.api.stack.TagEmiIngredient;
 import dev.emi.emi.api.stack.serializer.EmiIngredientSerializer;
+import dev.emi.emi.bom.BoM;
 import dev.emi.emi.jemi.JemiPlugin;
 import dev.emi.emi.platform.EmiAgnos;
 import dev.emi.emi.registry.EmiComparisonDefaults;
@@ -265,6 +266,9 @@ public class EmiReloadManager {
 					}
 					step(EmiPort.literal("Baking recipes"), 15_000);
 					EmiRecipes.bake();
+					// Defaults bake against the recipe manager published above; the original reloads BoM
+					// between the recipe bake and the persistent data load.
+					BoM.reload();
 					// After bake so favorite recipe ids can resolve against the recipe manager, as the original
 					// loads persistent data at the end of its reload.
 					EmiPersistentData.load();

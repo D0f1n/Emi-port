@@ -42,8 +42,6 @@ public class EmiData {
 	public static volatile List<Supplier<IndexStackData>> stackData = List.of();
 	public static volatile List<Supplier<EmiAlias>> aliases = List.of();
 	public static volatile List<Supplier<EmiRecipe>> recipes = List.of();
-	// TODO(bom): parked by RecipeDefaultLoader until the BoM round provides the consumer.
-	public static volatile RecipeDefaults recipeDefaults = new RecipeDefaults();
 
 	public static void init(Consumer<EmiResourceReloadListener> register) {
 		register.accept(new RecipeDefaultLoader());
