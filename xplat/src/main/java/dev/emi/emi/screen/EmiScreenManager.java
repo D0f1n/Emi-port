@@ -17,6 +17,7 @@ import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.stack.EmiStackInteraction;
 import dev.emi.emi.api.widget.Bounds;
+import dev.emi.emi.bom.BoM;
 import dev.emi.emi.input.EmiBind;
 import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.config.HeaderType;
@@ -390,7 +391,10 @@ public class EmiScreenManager {
 		if (searchBreak) {
 			return true;
 		}
-		// The original's viewTree bind opens the BoM tree here. TODO(bom)
+		if (function.apply(EmiConfig.viewTree)) {
+			EmiApi.viewRecipeTree();
+			return true;
+		}
 		if (function.apply(EmiConfig.back)) {
 			if (!EmiHistory.isEmpty()) {
 				EmiHistory.pop();
@@ -455,8 +459,11 @@ public class EmiScreenManager {
 				EmiFavorites.addFavorite(ingredient, stack.getRecipeContext());
 				repopulatePanels(SidebarType.FAVORITES);
 				return true;
+			} else if (function.apply(EmiConfig.viewStackTree) && stack.getRecipeContext() != null) {
+				BoM.setGoal(stack.getRecipeContext());
+				EmiApi.viewRecipeTree();
+				return true;
 			}
-			// The original's viewStackTree bind sets the BoM goal here. TODO(bom)
 			Supplier<EmiRecipe> supplier = () -> {
 				return EmiUtil.getPreferredRecipe(ingredient, lastPlayerInventory, true);
 			};

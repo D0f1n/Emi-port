@@ -12,6 +12,8 @@ import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.render.EmiRender;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStackInteraction;
+import dev.emi.emi.bom.BoM;
+import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.input.EmiBind;
 import dev.emi.emi.runtime.EmiDrawContext;
 import dev.emi.emi.screen.EmiScreenManager;
@@ -233,7 +235,19 @@ public class SlotWidget extends Widget {
 	}
 
 	private boolean slotInteraction(Function<EmiBind, Boolean> function) {
-		// The original toggles BoM default recipes and resolutions here. TODO(bom)
+		EmiRecipe recipe = getRecipe();
+		// TODO(bom): the resolution round adds the RecipeScreen.resolve branches here, assigning
+		// defaults and tree resolutions for the ingredient being resolved.
+		if (recipe != null && recipe.supportsRecipeTree()) {
+			if (function.apply(EmiConfig.defaultStack)) {
+				if (BoM.isDefaultRecipe(getStack(), recipe)) {
+					BoM.removeRecipe(getStack(), recipe);
+				} else {
+					BoM.addRecipe(getStack(), recipe);
+				}
+				return true;
+			}
+		}
 		return false;
 	}
 }
