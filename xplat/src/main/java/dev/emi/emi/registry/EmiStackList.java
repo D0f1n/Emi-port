@@ -42,9 +42,9 @@ import net.minecraft.world.level.material.Fluids;
  * The item/fluid index. Built post-world-load (see {@code EmiReloadManager}) so that the {@code new ItemStack}
  * calls it makes are legal on 26.1+ (ItemStackTemplate lifecycle).
  *
- * <p>Stage 3 scope: the config-driven index sources and EmiHidden filtering from the original are
- * dropped — this builds the full registry + creative-tab + fluid set, deduped, then applies the
- * datapack {@code index/stacks} edits.
+ * <p>Builds the full registry + creative-tab + fluid set, deduped, applies the datapack
+ * {@code index/stacks} edits, then {@link #bakeFiltered} drops EmiHidden-disabled and user-hidden
+ * stacks into {@link #filteredStacks}.
  */
 public class EmiStackList {
 	private static final TagKey<Item> ITEM_HIDDEN = TagKey.create(EmiPort.getItemRegistry().key(), EmiTags.HIDDEN_FROM_RECIPE_VIEWERS);
