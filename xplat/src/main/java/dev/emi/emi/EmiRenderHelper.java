@@ -7,6 +7,7 @@ import org.jetbrains.annotations.Nullable;
 
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
+import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.runtime.EmiDrawContext;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
@@ -92,6 +93,43 @@ public class EmiRenderHelper {
 			context.raw().enableScissor(x, y, x + width, y + height);
 			context.raw().blitSprite(RenderPipelines.GUI_TEXTURED, sprite, x - xOff, y - yOff, 16, 16, color);
 			context.raw().disableScissor();
+		}
+	}
+
+	public static Component getAmountText(EmiIngredient stack) {
+		return getAmountText(stack, stack.getAmount());
+	}
+
+	public static Component getAmountText(EmiIngredient stack, long amount) {
+		if (stack.isEmpty() || amount == 0) {
+			return EMPTY_TEXT;
+		}
+		if (stack.getEmiStacks().get(0).getKey() instanceof Fluid) {
+			return getFluidAmount(amount);
+		}
+		return EmiPort.literal(TEXT_FORMAT.format(amount));
+	}
+
+	public static Component getAmountText(EmiIngredient stack, double amount) {
+		if (stack.isEmpty() || amount == 0) {
+			return EMPTY_TEXT;
+		}
+		if (stack.getEmiStacks().get(0).getKey() instanceof Fluid) {
+			return EmiConfig.fluidUnit.translate(amount);
+		}
+		return EmiPort.literal(TEXT_FORMAT.format(amount));
+	}
+
+	public static Component getFluidAmount(long amount) {
+		return EmiConfig.fluidUnit.translate(amount);
+	}
+
+	public static int getAmountOverflow(Component amount) {
+		int width = CLIENT.font.width(amount);
+		if (width > 14) {
+			return width - 14;
+		} else {
+			return 0;
 		}
 	}
 
