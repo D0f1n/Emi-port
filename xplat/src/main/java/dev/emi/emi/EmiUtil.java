@@ -82,6 +82,17 @@ public class EmiUtil {
 		return EmiRecipeCategoryProperties.getOrder(recipe.getCategory());
 	}
 
+	/** The recipe the tree should resolve a raw ingredient to, preferring what the player can craft. */
+	public static EmiRecipe getRecipeResolution(EmiIngredient ingredient, EmiPlayerInventory inventory) {
+		if (ingredient.getEmiStacks().size() == 1 && !ingredient.isEmpty()) {
+			EmiStack stack = ingredient.getEmiStacks().get(0);
+			return getPreferredRecipe(EmiApi.getRecipeManager().getRecipesByOutput(stack).stream().filter(r -> {
+					return r.getOutputs().stream().anyMatch(i -> i.isEqual(stack));
+				}).toList(), inventory, false);
+		}
+		return null;
+	}
+
 	public static String subId(Identifier id) {
 		return id.getNamespace() + "/" + id.getPath();
 	}

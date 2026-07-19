@@ -18,6 +18,7 @@ import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.stack.EmiStackInteraction;
 import dev.emi.emi.api.stack.TagEmiIngredient;
+import dev.emi.emi.bom.BoM;
 import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.recipe.EmiTagRecipe;
 import dev.emi.emi.registry.EmiRecipes;
@@ -25,6 +26,7 @@ import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiFavorite;
 import dev.emi.emi.runtime.EmiHistory;
 import dev.emi.emi.runtime.EmiSidebars;
+import dev.emi.emi.screen.BoMScreen;
 import dev.emi.emi.screen.EmiScreenManager;
 import dev.emi.emi.screen.RecipeScreen;
 import net.minecraft.client.Minecraft;
@@ -35,8 +37,7 @@ import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 /**
  * The public static facade of EMI.
  *
- * <p>Port note, recipe round scope: recipe lookup and navigation. Favorites, cheat mode, the
- * recipe tree (BoM) and hovered-stack queries return with later rounds.
+ * <p>Port note: recipe lookup, navigation and the recipe tree.
  */
 public class EmiApi {
 	private static final Minecraft client = Minecraft.getInstance();
@@ -59,6 +60,8 @@ public class EmiApi {
 			return hs;
 		} else if (s instanceof RecipeScreen rs) {
 			return rs.old;
+		} else if (s instanceof BoMScreen bs) {
+			return bs.old;
 		}
 		return null;
 	}
@@ -133,6 +136,7 @@ public class EmiApi {
 		} else if (stack.getEmiStacks().size() == 1) {
 			EmiStack es = stack.getEmiStacks().get(0);
 			setPages(mapRecipes(pruneSources(EmiApi.getRecipeManager().getRecipesByOutput(es), es)), stack);
+			focusRecipe(BoM.getRecipe(es));
 		}
 	}
 
@@ -147,6 +151,20 @@ public class EmiApi {
 		}
 	}
 
+	public static void viewRecipeTree() {
+		if (client.gui.screen() == null) {
+			client.gui.setScreen(new InventoryScreen(client.player));
+		}
+		Screen s = client.gui.screen();
+		if (s instanceof AbstractContainerScreen<?> hs) {
+			push();
+			client.gui.setScreen(new BoMScreen(hs));
+		} else if (s instanceof RecipeScreen rs) {
+			push();
+			client.gui.setScreen(new BoMScreen(rs.old));
+		}
+	}
+
 	public static void focusRecipe(EmiRecipe recipe) {
 		if (client.gui.screen() instanceof RecipeScreen rs) {
 			rs.focusRecipe(recipe);
@@ -156,6 +174,8 @@ public class EmiApi {
 	private static void push() {
 		if (client.gui.screen() instanceof RecipeScreen rs) {
 			EmiHistory.push(rs);
+		} else if (client.gui.screen() instanceof BoMScreen bs) {
+			EmiHistory.push(bs);
 		} else {
 			EmiHistory.clear();
 			EmiHistory.push(client.gui.screen());
@@ -221,6 +241,9 @@ public class EmiApi {
 			if (client.gui.screen() instanceof AbstractContainerScreen<?> hs) {
 				push();
 				client.gui.setScreen(new RecipeScreen(hs, recipes));
+			} else if (client.gui.screen() instanceof BoMScreen bs) {
+				push();
+				client.gui.setScreen(new RecipeScreen(bs.old, recipes));
 			} else if (client.gui.screen() instanceof RecipeScreen rs) {
 				push();
 				RecipeScreen n = new RecipeScreen(rs.old, recipes);

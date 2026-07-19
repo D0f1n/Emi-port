@@ -1,0 +1,822 @@
+package dev.emi.emi.screen;
+
+import java.text.DecimalFormat;
+import java.util.Arrays;
+import java.util.List;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
+import java.util.stream.Stream;
+
+import com.google.common.collect.Lists;
+
+import dev.emi.emi.EmiPort;
+import dev.emi.emi.EmiRenderHelper;
+import dev.emi.emi.EmiUtil;
+import dev.emi.emi.api.EmiApi;
+import dev.emi.emi.api.recipe.EmiPlayerInventory;
+import dev.emi.emi.api.recipe.EmiRecipe;
+import dev.emi.emi.api.recipe.EmiRecipeCategory;
+import dev.emi.emi.api.recipe.EmiResolutionRecipe;
+import dev.emi.emi.api.stack.EmiIngredient;
+import dev.emi.emi.api.stack.EmiStack;
+import dev.emi.emi.api.widget.Bounds;
+import dev.emi.emi.bom.BoM;
+import dev.emi.emi.bom.ChanceMaterialCost;
+import dev.emi.emi.bom.ChanceState;
+import dev.emi.emi.bom.FlatMaterialCost;
+import dev.emi.emi.bom.FoldState;
+import dev.emi.emi.bom.MaterialNode;
+import dev.emi.emi.config.EmiConfig;
+import dev.emi.emi.input.EmiBind;
+import dev.emi.emi.input.EmiInput;
+import dev.emi.emi.registry.EmiStackList;
+import dev.emi.emi.runtime.EmiDrawContext;
+import dev.emi.emi.runtime.EmiFavorites;
+import dev.emi.emi.runtime.EmiHistory;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.resources.language.I18n;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.util.Mth;
+
+/**
+ * The recipe tree: the goal recipe at the top, ingredients recursively broken down by their
+ * assigned recipes, the summed raw cost and leftovers below.
+ *
+ * <p>Port notes for 26.2: the pan/zoom transform rides the GUI pose ({@code Matrix3x2fStack})
+ * instead of the removed global modelview stack, and colored lines/textures pass ARGB colors
+ * directly since the pipeline has no global shader color — the category icon renders untinted
+ * where the original tinted it with the border color. TODO(bom): the crafting mode toggle and
+ * progress coloring arrive with the craft round, the recipe preview tooltips with the tooltip
+ * round, and the resolution handoff to the recipe screen with the resolution round.
+ */
+public class BoMScreen extends Screen {
+	private static final int NODE_WIDTH = 30;
+	private static final int NODE_HORIZONTAL_SPACING = 8;
+	private static final int NODE_VERTICAL_SPACING = 20;
+	private static final int COST_HORIZONTAL_SPACING = 8;
+	private static final DecimalFormat CHANCE_FORMAT = new DecimalFormat("0.##");
+	private static final int WHITE = 0xFFFFFFFF;
+	private static final int CHANCED_COLOR = 0xFFCC991A;
+	private static final int HOVERED_COLOR = 0xFF8099FF;
+	private static StackBatcher batcher = new StackBatcher();
+	private static int zoom = 0;
+	private Bounds batches = new Bounds(-24, -50, 48, 26);
+	private Bounds help = new Bounds(0, 0, 16, 16);
+	private double offX, offY;
+	private List<Node> nodes = Lists.newArrayList();
+	private List<Cost> costs = Lists.newArrayList();
+	private EmiPlayerInventory playerInv;
+	private boolean hasRemainders = false;
+	public AbstractContainerScreen<?> old;
+	private int nodeWidth = 0;
+	private int nodeHeight = 0;
+	private int lastMouseX, lastMouseY;
+	private double scrollAcc = 0;
+
+	public BoMScreen(AbstractContainerScreen<?> old) {
+		super(EmiPort.translatable("screen.emi.recipe_tree"));
+		this.old = old;
+	}
+
+	@Override
+	protected void init() {
+		if (BoM.tree != null) {
+			offY = height / -3;
+		} else {
+			offY = 0;
+		}
+		recalculateTree();
+	}
+
+	public void recalculateTree() {
+		help = new Bounds(width - 18, height - 18, 16, 16);
+		if (BoM.tree != null) {
+			TreeVolume volume = addNewNodes(BoM.tree.goal, BoM.tree.batches, 1, 0, ChanceState.DEFAULT);
+			nodes = volume.nodes;
+			int horizontalOffset = (volume.getMaxRight() + volume.getMinLeft()) / 2;
+			for (Node node : volume.nodes) {
+				node.x -= horizontalOffset;
+			}
+			if (!volume.nodes.isEmpty()) {
+				Node node = volume.nodes.get(0);
+				int width = font.width("x" + BoM.tree.batches);
+				batches = new Bounds(node.x + node.width / 2 + 6, node.y - 10, width + 12, 22);
+			}
+
+			nodeWidth = volume.getMaxRight() - volume.getMinLeft();
+			nodeHeight = getNodeHeight(BoM.tree.goal);
+			playerInv = EmiPlayerInventory.of(minecraft.player);
+			// TODO(bom): the craft round calculates progress against the inventory here and
+			// tracks how much of each cost is already gathered, plus the view/craft mode toggle.
+
+			costs.clear();
+			BoM.tree.calculateCost();
+
+			List<FlatMaterialCost> treeCosts = Stream.concat(
+				BoM.tree.cost.costs.values().stream(),
+				BoM.tree.cost.chanceCosts.values().stream()
+			).sorted((a, b) -> Integer.compare(
+				EmiStackList.getIndex(a.ingredient.getEmiStacks().get(0)),
+				EmiStackList.getIndex(b.ingredient.getEmiStacks().get(0))
+			)).toList();
+			int cy = nodeHeight * NODE_VERTICAL_SPACING * 2;
+			int costX = 0;
+			for (FlatMaterialCost node : treeCosts) {
+				Cost cost = new Cost(node, costX, cy, false);
+				costs.add(cost);
+				costX += 16 + COST_HORIZONTAL_SPACING + EmiRenderHelper.getAmountOverflow(cost.getAmountText());
+			}
+			int costOffset = (costX - COST_HORIZONTAL_SPACING) / 2;
+			for (Cost cost : costs) {
+				cost.x -= costOffset;
+			}
+
+			List<Cost> remainders = Lists.newArrayList();
+
+			List<FlatMaterialCost> remainderCosts = Stream.concat(
+				BoM.tree.cost.remainders.values().stream(),
+				BoM.tree.cost.chanceRemainders.values().stream()
+			).sorted((a, b) -> Integer.compare(
+				EmiStackList.getIndex(a.ingredient.getEmiStacks().get(0)),
+				EmiStackList.getIndex(b.ingredient.getEmiStacks().get(0))
+			)).toList();
+			cy += 40;
+			int remainderX = 0;
+			for (FlatMaterialCost node : remainderCosts) {
+				if (node.getEffectiveAmount() <= 0) {
+					continue;
+				}
+				Cost cost = new Cost(node, remainderX, cy, true);
+				remainders.add(cost);
+				remainderX += 16 + COST_HORIZONTAL_SPACING + EmiRenderHelper.getAmountOverflow(cost.getAmountText());
+			}
+			costOffset = (remainderX - COST_HORIZONTAL_SPACING) / 2;
+			for (Cost cost : remainders) {
+				cost.x -= costOffset;
+			}
+			costs.addAll(remainders);
+			hasRemainders = !remainders.isEmpty();
+		} else {
+			nodes = Lists.newArrayList();
+		}
+		batcher.repopulate();
+	}
+
+	@Override
+	public void extractRenderState(GuiGraphicsExtractor raw, int mouseX, int mouseY, float delta) {
+		EmiDrawContext context = EmiDrawContext.wrap(raw);
+		context.fill(0, 0, width, height, 0xDD000000);
+		this.extractTransparentBackground(raw);
+		lastMouseX = mouseX;
+		lastMouseY = mouseY;
+		float scale = getScale();
+		int scaledWidth = (int) (width / scale);
+		int scaledHeight = (int) (height / scale);
+		// TODO should be the ingredient width if higher
+		int contentWidth = nodeWidth * NODE_WIDTH;
+		int contentHeight = nodeHeight * NODE_VERTICAL_SPACING + 80;
+		int xBound = scaledWidth / 2 + contentWidth - 100;
+		int topBound = scaledHeight * 1 / -2 + 20;
+		int bottomBound = contentHeight + scaledHeight / 2 - 20;
+		offX = Mth.clamp(offX, -xBound, xBound);
+		offY = Mth.clamp(offY, -bottomBound, -topBound);
+
+		int mx = (int) ((mouseX - width / 2) / scale - offX);
+		int my = (int) ((mouseY - height / 2) / scale - offY);
+
+		context.push();
+		context.pose().translate(width / 2f, height / 2f);
+		context.pose().scale(scale);
+		context.pose().translate((float) offX, (float) offY);
+		if (BoM.tree != null) {
+			batcher.begin(0, 0, 0);
+			int cy = nodeHeight * NODE_VERTICAL_SPACING * 2;
+			context.drawCenteredTextWithShadow(EmiPort.translatable("emi.total_cost"), 0, cy - 16, -1);
+			if (hasRemainders) {
+				context.drawCenteredTextWithShadow(EmiPort.translatable("emi.leftovers"), 0, cy - 16 + 40, -1);
+			}
+			for (Cost cost : costs) {
+				cost.render(context);
+			}
+			for (Node node : nodes) {
+				node.render(context, mx, my, delta);
+			}
+			int color = -1;
+			if (batches.contains(mx, my)) {
+				color = HOVERED_COLOR;
+			}
+			context.drawTextWithShadow(EmiPort.literal("x" + BoM.tree.batches),
+					batches.x() + 6, batches.y() + batches.height() / 2 - 4, color);
+			// TODO(bom): the view/craft mode toggle button renders here with the craft round.
+			batcher.draw();
+		} else {
+			context.drawCenteredTextWithShadow(EmiPort.translatable("emi.tree_welcome", EmiRenderHelper.getEmiText()), 0, -72, -1);
+			context.drawCenteredTextWithShadow(EmiPort.translatable("emi.no_tree"), 0, -48, -1);
+			context.drawCenteredTextWithShadow(EmiPort.translatable("emi.random_tree"), 0, -24, -1);
+			context.drawCenteredTextWithShadow(EmiPort.translatable("emi.random_tree_input"), 0, 0, -1);
+		}
+
+		context.pop();
+
+		int helpColor = help.contains(mouseX, mouseY) ? HOVERED_COLOR : -1;
+		context.drawTexture(EmiRenderHelper.WIDGETS, help.x(), help.y(), 0, 200, help.width(), help.height(), helpColor);
+
+		Hover hover = getHoveredStack(mouseX, mouseY);
+		if (hover != null) {
+			hover.drawTooltip(context, mouseX, mouseY);
+		} else if (BoM.tree != null && batches.contains(mx, my)) {
+			List<ClientTooltipComponent> list = Lists.newArrayList();
+			list.addAll(splitTranslate("tooltip.emi.bom.batch_size", BoM.tree.batches));
+			list.add(ClientTooltipComponent.create(EmiPort.ordered(
+				EmiPort.translatable("tooltip.emi.bom.batch_size.ideal", EmiBind.LEFT_CLICK.getBindText()))));
+			EmiRenderHelper.drawTooltip(context, list, mouseX, mouseY);
+		} else if (help.contains(mouseX, mouseY)) {
+			List<ClientTooltipComponent> list = splitTranslate("tooltip.emi.bom.help");
+			EmiRenderHelper.drawTooltip(context, list, width - 18, height - 18);
+		}
+	}
+
+	public Hover getHoveredStack(int mx, int my) {
+		float scale = getScale();
+		mx = (int) ((mx - width / 2) / scale - offX);
+		my = (int) ((my - height / 2) / scale - offY);
+		for (Cost cost : costs) {
+			if (mx >= cost.x && mx < cost.x + 16 && my >= cost.y && my < cost.y + 16) {
+				return new Hover(cost.cost.ingredient);
+			}
+		}
+		for (Node node : nodes) {
+			Hover hover = node.getHover(mx, my);
+			if (hover != null) {
+				return hover;
+			}
+		}
+		return null;
+	}
+
+	public int getNodeHeight(MaterialNode node) {
+		if (node.recipe != null && node.state == FoldState.EXPANDED) {
+			int i = 1;
+			for (MaterialNode n : node.children) {
+				i = Math.max(i, getNodeHeight(n));
+			}
+			if (node.recipe instanceof EmiResolutionRecipe) {
+				return i;
+			}
+			return i + 1;
+		}
+		return 1;
+	}
+
+	public TreeVolume addNewNodes(MaterialNode node, long multiplier, long divisor, int depth, ChanceState chance) {
+		if (node.catalyst) {
+			multiplier = node.amount;
+		} else {
+			multiplier = node.amount * (int) Math.ceil(multiplier / (float) divisor);
+		}
+		if (node.recipe != null && node.children.size() > 0 && node.state == FoldState.EXPANDED) {
+			ChanceState produced = chance.produce(node.produceChance);
+			if (node.recipe instanceof EmiResolutionRecipe) {
+				TreeVolume volume = addNewNodes(node.children.get(0), multiplier, node.divisor, depth, produced);
+				volume.nodes.get(0).resolution = node;
+				return volume;
+			}
+			TreeVolume left = null;
+			for (int i = 0; i < node.children.size(); i++) {
+				ChanceState consumed = produced.consume(node.children.get(i).consumeChance);
+				TreeVolume volume = addNewNodes(node.children.get(i), multiplier, node.divisor, depth + 1, consumed);
+				if (left == null) {
+					left = volume;
+				} else {
+					left.addToRight(volume);
+				}
+			}
+			left.addHead(node, multiplier, depth * NODE_VERTICAL_SPACING, chance);
+			return left;
+		}
+		return new TreeVolume(node, multiplier, depth * NODE_VERTICAL_SPACING, chance);
+	}
+
+	private static void drawLine(EmiDrawContext context, int x1, int y1, int x2, int y2, int color) {
+		if (x2 < x1) {
+			drawLine(context, x2, y1, x1, y2, color);
+			return;
+		}
+		if (y2 < y1) {
+			drawLine(context, x1, y2, x2, y1, color);
+			return;
+		}
+		context.fill(x1, y1, x2 - x1 + 1, y2 - y1 + 1, color);
+	}
+
+	public float getScale() {
+		zoom = Mth.clamp(zoom, -6, 4);
+		int scale = this.minecraft.getWindow().getGuiScale();
+		int desired = scale + zoom;
+		if (desired < 1) {
+			zoom -= desired - 1;
+			desired = 1;
+		}
+		return (float) desired / scale;
+	}
+
+	@Override
+	public boolean keyPressed(KeyEvent event) {
+		if (event.key() == 256) { // GLFW_KEY_ESCAPE
+			this.onClose();
+			return true;
+		} else if (minecraft.options.keyInventory.matches(event)) {
+			this.onClose();
+			return true;
+		}
+		Function<EmiBind, Boolean> function = bind -> bind.matchesKey(event.key(), event.scancode());
+		if (function.apply(EmiConfig.back)) {
+			EmiHistory.pop();
+			return true;
+		}
+		Hover hover = getHoveredStack(lastMouseX, lastMouseY);
+		if (hover != null && hover.stack != null && !hover.stack.isEmpty()) {
+			if (function.apply(EmiConfig.favorite)) {
+				EmiFavorites.addFavorite(hover.stack, hover.node == null ? null : hover.node.recipe);
+			}
+		}
+		if (EmiInput.isControlDown() && event.key() == 82) { // GLFW_KEY_R
+			List<EmiRecipe> recipes = EmiApi.getRecipeManager().getRecipes();
+			if (recipes.size() > 0) {
+				for (int i = 0; i < 100_000; i++) {
+					EmiRecipe recipe = recipes.get(EmiUtil.RANDOM.nextInt(recipes.size()));
+					if (recipe.supportsRecipeTree()) {
+						BoM.setGoal(recipe);
+						init();
+						return true;
+					}
+				}
+			}
+		} else if (EmiInput.isControlDown() && event.key() == 67) { // GLFW_KEY_C
+			BoM.tree = null;
+			init();
+		}
+		return super.keyPressed(event);
+	}
+
+	private boolean getAutoResolutions(Hover hover, BiConsumer<EmiIngredient, EmiRecipe> consumer) {
+		EmiPlayerInventory inv = playerInv;
+		if (inv != null) {
+			List<EmiStack> stacks = hover.stack.getEmiStacks();
+			if (stacks.size() > 1) {
+				for (EmiStack stack : stacks) {
+					if (inv.inventory.containsKey(stack)) {
+						consumer.accept(hover.stack, new EmiResolutionRecipe(hover.stack, stack));
+						return true;
+					}
+				}
+				for (EmiStack stack : stacks) {
+					for (Cost cost : costs) {
+						if (cost.cost.ingredient.equals(stack)) {
+							consumer.accept(hover.stack, new EmiResolutionRecipe(hover.stack, stack));
+							return true;
+						}
+					}
+				}
+				consumer.accept(hover.stack, new EmiResolutionRecipe(hover.stack, stacks.get(0)));
+				return true;
+			} else {
+				EmiRecipe recipe = EmiUtil.getRecipeResolution(hover.stack, inv);
+				if (recipe != null) {
+					consumer.accept(hover.stack, recipe);
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	@Override
+	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		double mouseX = event.x();
+		double mouseY = event.y();
+		int button = event.button();
+		Hover hover = getHoveredStack((int) mouseX, (int) mouseY);
+		float scale = getScale();
+		int mx = (int) ((mouseX - width / 2) / scale - offX);
+		int my = (int) ((mouseY - height / 2) / scale - offY);
+		if (hover != null) {
+			if (button == 1 && hover.node != null && hover.node.recipe != null) {
+				if (EmiInput.isShiftDown()) {
+					BoM.tree.addResolution(hover.node.ingredient, null);
+				} else if (!(hover.node.recipe instanceof EmiResolutionRecipe)) {
+					if (hover.node.state == FoldState.EXPANDED) {
+						hover.node.state = FoldState.COLLAPSED;
+					} else {
+						hover.node.state = FoldState.EXPANDED;
+					}
+				}
+				recalculateTree();
+				return true;
+			}
+			if (hover.stack != null) {
+				if (EmiInput.isShiftDown() && button == 0) {
+					if (getAutoResolutions(hover, BoM.tree::addResolution)) {
+						recalculateTree();
+					}
+					return true;
+				} else {
+					if (button == 0) {
+						EmiApi.displayRecipes(hover.stack);
+						// TODO(bom): the resolution round sets RecipeScreen.resolve here so the
+						// opened screen offers "use this recipe for this ingredient" buttons.
+						if (hover.node != null) {
+							if (hover.node.recipe != null) {
+								EmiApi.focusRecipe(hover.node.recipe);
+							}
+						}
+						return true;
+					}
+				}
+			}
+		} else if (batches.contains(mx, my) && BoM.tree != null) {
+			long ideal = BoM.tree.cost.getIdealBatch(BoM.tree.goal, 1, 1);
+			if (ideal != BoM.tree.batches) {
+				Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0f));
+				BoM.tree.batches = ideal;
+				recalculateTree();
+			}
+		}
+		// TODO(bom): the view/craft mode toggle is clicked here with the craft round.
+		Function<EmiBind, Boolean> function = bind -> bind.matchesMouse(button);
+		if (function.apply(EmiConfig.back)) {
+			EmiHistory.pop();
+			return true;
+		}
+		return super.mouseClicked(event, doubleClick);
+	}
+
+	@Override
+	public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double amount) {
+		scrollAcc += amount;
+		amount = (int) scrollAcc;
+		scrollAcc %= 1;
+		float scale = getScale();
+		int mx = (int) ((mouseX - width / 2) / scale - offX);
+		int my = (int) ((mouseY - height / 2) / scale - offY);
+		if (BoM.tree != null && batches.contains(mx, my)) {
+			long adjustment = (long) amount;
+			if (EmiInput.isShiftDown()) {
+				adjustment *= 16;
+			} else if (EmiInput.isControlDown()) {
+				if (amount > 0) {
+					adjustment = BoM.tree.batches;
+				} else {
+					adjustment = -BoM.tree.batches / 2;
+				}
+			}
+			if (BoM.tree.batches == 1 && adjustment > 1) {
+				BoM.tree.batches = adjustment;
+			} else {
+				BoM.tree.batches += adjustment;
+			}
+			BoM.tree.batches = Math.max(1, BoM.tree.batches);
+			recalculateTree();
+			return true;
+		}
+		zoom += (int) amount;
+		return true;
+	}
+
+	@Override
+	public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
+		if (event.button() == 0 || event.button() == 2) {
+			float scale = getScale();
+			offX += deltaX / scale;
+			offY += deltaY / scale;
+			return true;
+		}
+		return super.mouseDragged(event, deltaX, deltaY);
+	}
+
+	@Override
+	public boolean isPauseScreen() {
+		return false;
+	}
+
+	@Override
+	public void onClose() {
+		Minecraft.getInstance().gui.setScreen(old);
+	}
+
+	// TODO(bom): replace with EmiTooltip when the tooltip package arrives with its round.
+	private static ClientTooltipComponent chanceLine(String type, float chance) {
+		return ClientTooltipComponent.create(EmiPort.ordered(
+			EmiPort.translatable("tooltip.emi.chance." + type, CHANCE_FORMAT.format(chance * 100))
+				.withStyle(ChatFormatting.GOLD)));
+	}
+
+	// TODO(bom): replace with EmiTooltip when the tooltip package arrives with its round.
+	private static List<ClientTooltipComponent> splitTranslate(String key, Object... objects) {
+		return Arrays.stream(I18n.get(key, objects).split("\n"))
+			.map(s -> ClientTooltipComponent.create(EmiPort.ordered(EmiPort.literal(s)))).toList();
+	}
+
+	private class Cost {
+		public FlatMaterialCost cost;
+		public int x, y;
+		public long alreadyDone = 0;
+		public boolean remainder;
+
+		public Cost(FlatMaterialCost cost, int x, int y, boolean remainder) {
+			this.cost = cost;
+			this.x = x;
+			this.y = y;
+			this.remainder = remainder;
+		}
+
+		public void render(EmiDrawContext context) {
+			batcher.render(cost.ingredient, context.raw(), x, y, 0, ~(EmiIngredient.RENDER_AMOUNT | EmiIngredient.RENDER_REMAINDER));
+			EmiRenderHelper.renderAmount(context, x, y, getAmountText());
+		}
+
+		public Component getAmountText() {
+			long adjusted = cost.getEffectiveAmount();
+			Component totalText;
+			if (cost instanceof ChanceMaterialCost) {
+				totalText = EmiPort.append(EmiPort.literal("≈"), EmiRenderHelper.getAmountText(cost.ingredient, adjusted))
+					.withStyle(ChatFormatting.GOLD);
+			} else {
+				totalText = EmiRenderHelper.getAmountText(cost.ingredient, adjusted);
+			}
+			if (!remainder && BoM.craftingMode) {
+				long amount = alreadyDone;
+				if (amount < adjusted) {
+					Component amountText = amount == 0 ? EmiPort.literal("0") : (EmiRenderHelper.getAmountText(cost.ingredient, amount));
+					MutableComponent text = EmiPort.append(EmiPort.literal("", ChatFormatting.RED), amountText);
+					text = EmiPort.append(text, EmiPort.literal("/"));
+					text = EmiPort.append(text, totalText);
+					return text;
+				}
+			}
+			return totalText;
+		}
+	}
+
+	private class Hover {
+		public EmiIngredient stack;
+		public MaterialNode node, resolve;
+		public EmiRecipeCategory category;
+
+		public Hover(EmiIngredient stack) {
+			this.stack = stack;
+		}
+
+		public Hover(EmiIngredient stack, MaterialNode node, MaterialNode resolve) {
+			this.stack = stack;
+			this.node = node;
+			this.resolve = resolve;
+		}
+
+		public Hover(EmiRecipeCategory category, MaterialNode node) {
+			this.category = category;
+			this.node = node;
+		}
+
+		public Hover(MaterialNode node) {
+			this.node = node;
+		}
+
+		public boolean drawTooltip(EmiDrawContext context, int mouseX, int mouseY) {
+			if (stack != null) {
+				List<ClientTooltipComponent> list = Lists.newArrayList();
+				list.addAll(stack.getTooltip());
+				// TODO(bom): the tooltip round adds a live recipe preview here — the node's
+				// recipe, or the proposed auto resolution while shift is held.
+				if (node != null) {
+					if (node.consumeChance != 1) {
+						list.add(chanceLine("consume", node.consumeChance));
+					} else if (resolve != null && resolve.consumeChance != 1) {
+						list.add(chanceLine("consume", resolve.consumeChance));
+					}
+					if (node.produceChance != 1) {
+						list.add(chanceLine("produce", node.produceChance));
+					}
+				}
+				EmiRenderHelper.drawTooltip(context, list, mouseX, mouseY);
+				return true;
+			} else if (category != null) {
+				EmiRenderHelper.drawTooltip(context, category.getTooltip(), mouseX, mouseY);
+				return true;
+			}
+			return false;
+		}
+	}
+
+	private class Node {
+		public Node parent = null;
+		public MaterialNode resolution = null;
+		public MaterialNode node;
+		public int width, x, y, midOffset;
+		public long amount;
+		public ChanceState chance;
+
+		public Node(MaterialNode node, long amount, int x, int y, ChanceState chance) {
+			this.node = node;
+			if (node.recipe != null) {
+				width = 42;
+			} else {
+				width = 16;
+			}
+			this.amount = amount;
+			this.x = x;
+			this.y = y;
+			this.chance = chance;
+			int tw = EmiRenderHelper.getAmountOverflow(getAmountText());
+			width += tw;
+			midOffset = tw / -2;
+		}
+
+		public void render(EmiDrawContext context, int mouseX, int mouseY, float delta) {
+			if (parent != null) {
+				int color = lineColor(node.consumeChance != 1 || (resolution != null && resolution.consumeChance != 1), false);
+
+				int nx = x;
+				int ny = y;
+				int px = parent.x;
+				int py = parent.y;
+				int off = NODE_VERTICAL_SPACING - 1;
+				if (resolution != null) {
+					context.drawTexture(EmiRenderHelper.WIDGETS, x - 3, y - 19, 9, 192, 7, 7, color);
+					drawLine(context, nx, y - 12, nx, ny - 11, color);
+					drawLine(context, nx, py + off, nx, y - 19, color);
+				} else {
+					drawLine(context, nx, ny - 11, nx, py + off, color);
+				}
+				drawLine(context, px, py + off, nx, py + off, lineColor(false, false));
+			}
+			int xo = 0;
+			if (node.recipe != null) {
+				int lx = x - width / 2;
+				int ly = y - 11;
+				int hx = x + width / 2;
+				int hy = y + 10;
+
+				int foldColor = lineColor(node.produceChance != 1, false);
+				if (node.state != FoldState.EXPANDED) {
+					drawLine(context, x, hy + 1, x, hy + 3, foldColor);
+				} else {
+					drawLine(context, x, hy + 1, x, hy + 8, foldColor);
+				}
+
+				boolean hovered = mouseX >= lx && mouseY >= ly && mouseX <= hx && mouseY <= hy;
+				int borderColor = lineColor(node.produceChance != 1, hovered);
+				drawLine(context, lx, ly, lx, hy, borderColor);
+				drawLine(context, hx, ly, hx, hy, borderColor);
+				drawLine(context, lx, ly, hx, ly, borderColor);
+				drawLine(context, lx, hy, hx, hy, borderColor);
+				EmiRecipeCategory cat = node.recipe.getCategory();
+				cat.renderSimplified(context.raw(), x - 18 + midOffset, y - 8, delta);
+				xo = 11;
+			}
+			batcher.render(node.ingredient, context.raw(), x + xo - 8 + midOffset, y - 8, 0);
+			EmiRenderHelper.renderAmount(context, x + xo - 8 + midOffset, y - 8, getAmountText());
+		}
+
+		private int lineColor(boolean chanced, boolean hovered) {
+			int color = WHITE;
+			if (chanced) {
+				color = CHANCED_COLOR;
+			}
+			// TODO(bom): the craft round colors completed/partial nodes by progress here.
+			if (hovered) {
+				color = HOVERED_COLOR;
+			}
+			return color;
+		}
+
+		public Component getAmountText() {
+			if (chance.chanced()) {
+				long a = Math.round(amount * chance.chance());
+				a = Math.max(a, node.amount);
+				return EmiPort.append(EmiPort.literal("≈"),
+						EmiRenderHelper.getAmountText(node.ingredient, a))
+					.withStyle(ChatFormatting.GOLD);
+			} else {
+				return EmiRenderHelper.getAmountText(node.ingredient, amount);
+			}
+		}
+
+		public Hover getHover(int mouseX, int mouseY) {
+			if (resolution != null) {
+				if (mouseX >= x - 4 && mouseX < x + 4 && mouseY >= y - 19 && mouseY < y - 11) {
+					return new Hover(resolution.ingredient, resolution, null);
+				}
+			}
+			int imx = mouseX;
+			if (node.recipe != null) {
+				if (mouseX >= x - 18 + midOffset && mouseX < x - 2 + midOffset && mouseY >= y - 8 && mouseY < y + 8) {
+					return new Hover(node.recipe.getCategory(), node);
+				}
+				imx -= 11;
+			}
+			if (imx >= x - 8 + midOffset && imx < x + 8 + midOffset && mouseY >= y - 8 && mouseY < y + 8) {
+				return new Hover(node.ingredient, node, resolution);
+			}
+			int lx = x - width / 2;
+			int ly = y - 11;
+			int hx = x + width / 2;
+			int hy = y + 10;
+			if (mouseX >= lx && mouseY >= ly && mouseX <= hx && mouseY <= hy) {
+				return new Hover(node);
+			}
+			return null;
+		}
+	}
+
+	private class TreeVolume {
+		public List<Width> widths = Lists.newArrayList();
+		public List<Node> nodes = Lists.newArrayList();
+
+		public TreeVolume(MaterialNode node, long amount, int y, ChanceState chance) {
+			Node head = new Node(node, amount, 0, y, chance);
+			int l = head.width / 2;
+			widths.add(new Width(-l, head.width - l));
+			nodes.add(head);
+		}
+
+		public void addHead(MaterialNode node, long amount, int y, ChanceState chance) {
+			int x = (getLeft(0) + getRight(0)) / 2;
+			Node newNode = new Node(node, amount, x, y, chance);
+			for (Node n : nodes) {
+				if (n.parent == null) {
+					n.parent = newNode;
+				}
+				n.y += NODE_VERTICAL_SPACING;
+			}
+			int l = newNode.width / 2;
+			widths.add(0, new Width(x - l, x + newNode.width - l));
+			nodes.add(0, newNode);
+		}
+
+		public int getDepth() {
+			return widths.size();
+		}
+
+		public int getMinLeft() {
+			int m = getLeft(0);
+			for (int i = 1; i < getDepth(); i++) {
+				m = Math.min(m, getLeft(i));
+			}
+			return m;
+		}
+
+		public int getMaxRight() {
+			int m = getRight(0);
+			for (int i = 1; i < getDepth(); i++) {
+				m = Math.max(m, getRight(i));
+			}
+			return m;
+		}
+
+		public int getLeft(int depth) {
+			return widths.get(depth).left;
+		}
+
+		public int getRight(int depth) {
+			return widths.get(depth).right;
+		}
+
+		public void addToRight(TreeVolume other) {
+			int rOff = getRight(0) - other.getLeft(0) + NODE_HORIZONTAL_SPACING;
+			for (int i = 1; i < getDepth() && i < other.getDepth(); i++) {
+				rOff = Math.max(rOff, getRight(i) - other.getLeft(i) + NODE_HORIZONTAL_SPACING);
+			}
+			for (int i = 0; i < other.getDepth(); i++) {
+				if (i < getDepth()) {
+					widths.get(i).right = other.getRight(i) + rOff;
+				} else {
+					widths.add(new Width(other.getLeft(i) + rOff, other.getRight(i) + rOff));
+				}
+			}
+			for (Node node : other.nodes) {
+				node.x += rOff;
+				nodes.add(node);
+			}
+		}
+
+		private static class Width {
+			private int left, right;
+
+			public Width(int left, int right) {
+				this.left = left;
+				this.right = right;
+			}
+		}
+	}
+}
