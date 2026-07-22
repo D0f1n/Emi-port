@@ -34,6 +34,16 @@ public class BoM {
 	public static volatile Set<EmiRecipe> disabledRecipes = Sets.newHashSet();
 	public static boolean craftingMode = false;
 
+	/**
+	 * Stores the datapack-provided defaults and schedules a rebake on the client thread, as the
+	 * original. This is one of two {@link #reload()} paths: the resource reload lands here (at
+	 * startup and on F3+T) and bakes against whatever recipe manager is currently published —
+	 * before a world that is the empty manager, so the bake yields an empty map. The EMI reload
+	 * worker then calls {@link #reload()} again after {@code EmiRecipes.bake()} (and before
+	 * {@code EmiPersistentData.load()}), rebaking against the freshly published manager. The worker
+	 * pass always runs after the recipe bake, so the later of the two writes is always the one
+	 * baked against current recipes.
+	 */
 	public static void setDefaults(RecipeDefaults defaults) {
 		BoM.defaults = defaults;
 		Minecraft.getInstance().execute(() -> reload());
@@ -134,6 +144,11 @@ public class BoM {
 		disabledRecipes = newDisabled;
 	}
 
+	/**
+	 * Rebakes the datapack defaults into output-to-recipe mappings, publishing by reference swap.
+	 * Called from the client thread via {@link #setDefaults} and from the reload worker between
+	 * the recipe bake and the persistent data load — see {@link #setDefaults} for the ordering.
+	 */
 	public static void reload() {
 		defaultRecipes = defaults.bake();
 	}
