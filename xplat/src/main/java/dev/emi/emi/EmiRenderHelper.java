@@ -5,11 +5,24 @@ import java.util.List;
 
 import org.jetbrains.annotations.Nullable;
 
+import com.google.common.collect.Lists;
+
+import dev.emi.emi.api.EmiApi;
+import dev.emi.emi.api.recipe.EmiRecipe;
+import dev.emi.emi.api.recipe.handler.EmiCraftContext;
+import dev.emi.emi.api.recipe.handler.EmiRecipeHandler;
+import dev.emi.emi.api.recipe.handler.StandardRecipeHandler;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
+import dev.emi.emi.api.widget.Widget;
+import dev.emi.emi.api.widget.WidgetHolder;
 import dev.emi.emi.config.EmiConfig;
+import dev.emi.emi.registry.EmiRecipeFiller;
 import dev.emi.emi.runtime.EmiDrawContext;
+import dev.emi.emi.runtime.EmiLog;
+import dev.emi.emi.screen.EmiScreenManager;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -170,6 +183,69 @@ public class EmiRenderHelper {
 	// the badge draws after the stack like the ingredient/catalyst markers above, so a plain draw works.
 	public static void renderRecipeFavorite(EmiIngredient ingredient, EmiDrawContext context, int x, int y) {
 		context.drawTexture(WIDGETS, x + 12, y, 16, 252, 4, 4);
+	}
+
+	public static void renderRecipeBackground(EmiRecipe recipe, EmiDrawContext context, int x, int y) {
+		drawNinePatch(context, BACKGROUND, x, y, recipe.getDisplayWidth() + 8, recipe.getDisplayHeight() + 8, 27, 0, 4, 1);
+	}
+
+	/**
+	 * Draws a live miniature of a recipe: the nine-patch panel plus the recipe's own widgets, built
+	 * fresh through a throwaway {@link WidgetHolder}. Widgets render with the mouse parked offscreen
+	 * so nothing shows hover state. {@code overlayColor} tints the panel when not -1, and
+	 * {@code showMissing} greys out ingredients the player can't supply, through the screen's recipe
+	 * handler when there is one. The original ended by re-drawing the background under an alpha-only
+	 * color mask to force its translucency; that global-state pass has no deferred-pipeline
+	 * equivalent and is dropped like the rest of the blend/depth wrappers.
+	 */
+	@SuppressWarnings({"rawtypes", "unchecked"})
+	public static void renderRecipe(EmiRecipe recipe, EmiDrawContext context, int x, int y, boolean showMissing, int overlayColor) {
+		try {
+			renderRecipeBackground(recipe, context, x, y);
+
+			List<Widget> widgets = Lists.newArrayList();
+			WidgetHolder holder = new WidgetHolder() {
+
+				public int getWidth() {
+					return recipe.getDisplayWidth();
+				}
+
+				public int getHeight() {
+					return recipe.getDisplayHeight();
+				}
+
+				public <T extends Widget> T add(T widget) {
+					widgets.add(widget);
+					return widget;
+				}
+			};
+
+			context.push();
+			context.pose().translate(x + 4, y + 4);
+
+			recipe.addWidgets(holder);
+			float delta = CLIENT.getDeltaTracker().getGameTimeDeltaPartialTick(false);
+			for (Widget widget : widgets) {
+				widget.render(context.raw(), -1000, -1000, delta);
+			}
+			if (overlayColor != -1) {
+				context.fill(-1, -1, recipe.getDisplayWidth() + 2, recipe.getDisplayHeight() + 2, overlayColor);
+			}
+
+			if (showMissing) {
+				AbstractContainerScreen hs = EmiApi.getHandledScreen();
+				EmiRecipeHandler handler = EmiRecipeFiller.getFirstValidHandler(recipe, hs);
+				if (handler != null) {
+					handler.render(recipe, new EmiCraftContext(hs, handler.getInventory(hs), EmiCraftContext.Type.FILL_BUTTON), widgets, context.raw());
+				} else if (EmiScreenManager.lastPlayerInventory != null) {
+					StandardRecipeHandler.renderMissing(recipe, EmiScreenManager.lastPlayerInventory, widgets, context.raw());
+				}
+			}
+
+			context.pop();
+		} catch (Throwable e) {
+			EmiLog.error("Error rendering recipe", e);
+		}
 	}
 
 	public static void drawNinePatch(EmiDrawContext context, Identifier texture, int x, int y, int w, int h, int u, int v, int cornerLength, int centerLength) {
