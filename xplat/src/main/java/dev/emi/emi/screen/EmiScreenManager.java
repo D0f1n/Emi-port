@@ -6,6 +6,8 @@ import java.util.function.Supplier;
 
 import org.jetbrains.annotations.Nullable;
 
+import com.google.common.collect.Lists;
+
 import dev.emi.emi.EmiPort;
 import dev.emi.emi.EmiRenderHelper;
 import dev.emi.emi.EmiUtil;
@@ -42,6 +44,7 @@ import dev.emi.emi.runtime.EmiHidden;
 import dev.emi.emi.runtime.EmiHistory;
 import dev.emi.emi.runtime.EmiReloadManager;
 import dev.emi.emi.runtime.EmiSidebars;
+import dev.emi.emi.screen.tooltip.RecipeTooltipComponent;
 import dev.emi.emi.screen.widget.SidebarButtonWidget;
 import dev.emi.emi.screen.widget.SizedButtonWidget;
 import dev.emi.emi.search.EmiSearch;
@@ -927,7 +930,15 @@ public class EmiScreenManager {
 
 		// Hover tooltip.
 		if (hovered != null && !hovered.isEmpty()) {
-			List<ClientTooltipComponent> tip = hovered.getEmiStacks().get(0).getTooltip();
+			List<ClientTooltipComponent> tip = Lists.newArrayList(hovered.getEmiStacks().get(0).getTooltip());
+			// While the show-craft bind (default left shift) is held over a stack with no recipe
+			// context, preview the recipe it would craft with, greying out missing ingredients.
+			if (EmiApi.getRecipeContext(hovered) == null && EmiConfig.showCraft.isHeld()) {
+				EmiRecipe recipe = EmiUtil.getPreferredRecipe(hovered, lastPlayerInventory, false);
+				if (recipe != null) {
+					tip.add(new RecipeTooltipComponent(recipe, true));
+				}
+			}
 			if (!tip.isEmpty()) {
 				graphics.tooltip(client.font, tip, mouseX, mouseY, DefaultTooltipPositioner.INSTANCE, null);
 			}

@@ -12,6 +12,7 @@ import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.screen.StackBatcher.Batchable;
+import dev.emi.emi.screen.tooltip.RecipeTooltipComponent;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 
@@ -78,8 +79,9 @@ public class EmiFavorite implements EmiIngredient, Batchable {
 	public List<ClientTooltipComponent> getTooltip() {
 		List<ClientTooltipComponent> list = Lists.newArrayList();
 		list.addAll(stack.getTooltip());
-		// The original appends a RecipeTooltipComponent rendering the bound recipe inline; that
-		// needs the recipe-in-tooltip renderer which is not ported. TODO(recipe-tooltip)
+		if (recipe != null) {
+			list.add(new RecipeTooltipComponent(recipe, true));
+		}
 		return list;
 	}
 

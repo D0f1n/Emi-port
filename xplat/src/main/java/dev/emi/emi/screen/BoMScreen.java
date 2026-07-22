@@ -33,6 +33,7 @@ import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiDrawContext;
 import dev.emi.emi.runtime.EmiFavorites;
 import dev.emi.emi.runtime.EmiHistory;
+import dev.emi.emi.screen.tooltip.RecipeTooltipComponent;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -596,8 +597,18 @@ public class BoMScreen extends Screen {
 			if (stack != null) {
 				List<ClientTooltipComponent> list = Lists.newArrayList();
 				list.addAll(stack.getTooltip());
-				// TODO(bom): the tooltip round adds a live recipe preview here — the node's
-				// recipe, or the proposed auto resolution while shift is held.
+				if (EmiInput.isShiftDown()) {
+					// A proposed auto resolution previews green; the node's own recipe previews plain.
+					getAutoResolutions(this, (stack, recipe) -> {
+						if (node == null || recipe != node.recipe) {
+							list.add(new RecipeTooltipComponent(recipe, 0x4488FFAA));
+						} else {
+							list.add(new RecipeTooltipComponent(recipe));
+						}
+					});
+				} else if (node != null && node.recipe != null) {
+					list.add(new RecipeTooltipComponent(node.recipe));
+				}
 				if (node != null) {
 					if (node.consumeChance != 1) {
 						list.add(chanceLine("consume", node.consumeChance));

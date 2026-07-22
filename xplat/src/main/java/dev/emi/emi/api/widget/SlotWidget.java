@@ -9,6 +9,7 @@ import com.google.common.collect.Lists;
 import dev.emi.emi.EmiPort;
 import dev.emi.emi.EmiRenderHelper;
 import dev.emi.emi.api.recipe.EmiRecipe;
+import dev.emi.emi.api.recipe.EmiResolutionRecipe;
 import dev.emi.emi.api.render.EmiRender;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStackInteraction;
@@ -17,6 +18,7 @@ import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.input.EmiBind;
 import dev.emi.emi.runtime.EmiDrawContext;
 import dev.emi.emi.screen.EmiScreenManager;
+import dev.emi.emi.screen.tooltip.RecipeCostTooltipComponent;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
@@ -213,6 +215,15 @@ public class SlotWidget extends Widget {
 			String key = recipe != null ? "tooltip.emi.chance.produce" : "tooltip.emi.chance.consume";
 			list.add(ClientTooltipComponent.create(EmiPort.ordered(EmiPort.translatable(key,
 				(int) (getStack().getChance() * 100)).withStyle(ChatFormatting.GOLD))));
+		}
+		EmiRecipe recipe = getRecipe();
+		if (recipe != null) {
+			if (EmiConfig.showCostPerBatch && recipe.supportsRecipeTree() && !(recipe instanceof EmiResolutionRecipe)) {
+				RecipeCostTooltipComponent rctc = new RecipeCostTooltipComponent(recipe);
+				if (rctc.shouldDisplay()) {
+					list.add(rctc);
+				}
+			}
 		}
 	}
 
