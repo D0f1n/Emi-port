@@ -38,6 +38,7 @@
   "tooltip.emi.chance.consume": "Consumption chance: %s%%",
   "tooltip.emi.chance.produce": "Production chance: %s%%",
   "emi.total_cost": "Total Cost",
+  "emi.cost_per": "Cost per batch:",
   "emi.leftovers": "Leftovers",
   "emi.tree_welcome": "Welcome to %s",
   "emi.no_tree": "You haven't set a recipe tree to view yet...",
