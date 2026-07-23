@@ -928,9 +928,10 @@ public class EmiScreenManager {
 
 		renderDraggedStack(context, graphics, mouseX, mouseY, delta);
 
-		// Hover tooltip.
+		// Hover tooltip. Ask the hovered ingredient itself, not its first stack — favorites carry a
+		// recipe context and append its preview from their own getTooltip, as the original.
 		if (hovered != null && !hovered.isEmpty()) {
-			List<ClientTooltipComponent> tip = Lists.newArrayList(hovered.getEmiStacks().get(0).getTooltip());
+			List<ClientTooltipComponent> tip = Lists.newArrayList(hovered.getTooltip());
 			// While the show-craft bind (default left shift) is held over a stack with no recipe
 			// context, preview the recipe it would craft with, greying out missing ingredients.
 			if (EmiApi.getRecipeContext(hovered) == null && EmiConfig.showCraft.isHeld()) {
